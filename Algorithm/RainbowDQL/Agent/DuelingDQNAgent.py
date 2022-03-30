@@ -137,7 +137,7 @@ class MultiAgentDuelingDQNAgent:
 			selected_action = selected_action.detach().cpu().numpy()
 		else:
 			q_values = self.dqn(torch.FloatTensor(singular_state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
-			mask = self.env.get_action_mask(ind)
+			mask = self.env.get_action_mask(ind)  # True means invalid
 			q_values.squeeze(0)[mask] = -np.inf
 			selected_action = np.argmax(q_values)
 
@@ -148,8 +148,7 @@ class MultiAgentDuelingDQNAgent:
 		selected_action = []
 		for i in range(self.env.num_agents):
 			individual_state = self.env.individual_agent_observation(state=state, agent_num=i)
-
-			selected_action.append(self.individual_select_action(individual_state))
+			selected_action.append(self.individual_select_action(individual_state, ind=i))
 
 		return np.asarray(selected_action)
 
@@ -263,6 +262,7 @@ class MultiAgentDuelingDQNAgent:
 				if self.safe_action:
 					safe_mask = np.asarray([self.env.get_action_mask(ind=j) for j in range(self.env.num_agents)])
 
+				# Process the agent step
 				next_state, reward, done = self.step(action)
 
 				if self.safe_action:
@@ -275,12 +275,12 @@ class MultiAgentDuelingDQNAgent:
 				else:
 					info = {}
 
-				# Store the transition
+				# Store every observation for every agent
 
 				for j in range(self.env.num_agents):
 					self.transition = [self.env.individual_agent_observation(state=state, agent_num=j),
-					                   action,
-					                   reward,
+					                   action[j],
+					                   reward[j],
 					                   self.env.individual_agent_observation(state=next_state, agent_num=j),
 					                   done,
 					                   info]
@@ -290,7 +290,7 @@ class MultiAgentDuelingDQNAgent:
 				# Update the state
 				state = next_state
 				# Accumulate indicators
-				score += reward
+				score += np.mean(reward)  # The mean reward among the agents
 				length += 1
 
 				# if episode ends
@@ -357,7 +357,7 @@ class MultiAgentDuelingDQNAgent:
 				unsafe_next_q_values = self.dqn_target(next_state)
 
 				for mask_dictionary, q_values in zip(info_dictionaries, unsafe_next_q_values):
-					q_values[mask_dictionary['safe_mask_'] == False] = -np.inf
+					q_values[mask_dictionary['safe_mask_']] = -np.inf
 
 				next_q_value = unsafe_next_q_values.max(dim=1, keepdim=True)[0]
 

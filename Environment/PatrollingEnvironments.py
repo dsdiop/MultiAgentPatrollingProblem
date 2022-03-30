@@ -14,16 +14,16 @@ class MultiagentDiscrete(gym.Space):
     """
     def __init__(self, n_actions, n_agents):
         assert n_actions >= 0
-        self.n_actions = n_actions
+        self.n = n_actions
         self.n_agents = n_agents
         super(MultiagentDiscrete, self).__init__((), np.int64)
 
     def sample(self):
 
-        return self.np_random.randint(self.n_actions, size=(self.n_agents,))
+        return self.np_random.randint(self.n, size=(self.n_agents,))
 
     def __repr__(self):
-        return "Multiagent Discrete(%d,%d)" % self.n_actions, self.n_agents
+        return "Multiagent Discrete(%d,%d)" % self.n, self.n_agents
 
     def __eq__(self, other):
         return isinstance(other, MultiagentDiscrete) and self.n_agents == other.n_agents
@@ -71,7 +71,8 @@ class DiscreteVehicle:
     def check_collision(self, next_position):
 
         if self.navigation_map[int(next_position[0]), int(next_position[1])] == 0:
-            return True
+            return True  # There is a collision
+
         return False
 
     def update_trajectory(self):
@@ -127,11 +128,15 @@ class DiscreteVehicle:
         self.distance = 0.0
         self.num_of_collisions = 0
 
+        self.detection_map = self.compute_detection_map()
+
     def check_action(self, action):
+        """ Return True if the action leads to a collision """
 
         angle = self.angle_set[action]
         movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])
         next_position = self.position + movement
+
 
         return self.check_collision(next_position)
 
@@ -220,12 +225,20 @@ class DiscreteFleet:
         self.measured_locations = None
         self.fleet_collisions = 0
 
+        # Get the sum (logical or) of the detection maps #
+        self.fleet_detection_map = self.vehicles[0].detection_map
+        for n in range(1, self.number_of_vehicles):
+            self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
+                                                     self.vehicles[n].detection_map)
+
+        self.fleet_historic_visited_map = np.copy(self.fleet_detection_map)
+
     def get_distances(self):
 
         return [self.vehicles[k].distance for k in range(self.number_of_vehicles)]
 
     def check_collisions(self, test_actions):
-
+        """ Array of bools (True if collision) """
         return [self.vehicles[k].check_action(test_actions[k]) for k in range(self.number_of_vehicles)]
 
     def move_fleet_to_positions(self, goal_list):
@@ -240,14 +253,22 @@ class DiscreteFleet:
 
 class MultiAgentPatrolling(gym.Env):
 
-    def __init__(self, scenario_map, initial_positions, distance_budget,
-                 number_of_vehicles, seed=0, detection_length=2, max_collisions = 5, forget_factor = 1):
+    def __init__(self, scenario_map, distance_budget,
+                 number_of_vehicles, initial_positions=None, seed=0, detection_length=2, max_collisions = 5, forget_factor = 1):
 
         # Scenario map
         self.scenario_map = scenario_map
         self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
+
         # Initial positions
-        self.initial_positions = initial_positions
+        if initial_positions is None:
+            self.random_inititial_positions = True
+            random_positions_indx = np.random.choice(np.arange(0,len(self.visitable_locations)), number_of_vehicles, replace = False)
+            self.initial_positions = self.visitable_locations[random_positions_indx]
+        else:
+            self.random_inititial_positions = False
+            self.initial_positions = initial_positions
+
         # Number of pixels
         self.distance_budget = distance_budget
         self.max_number_of_movements = distance_budget // detection_length
@@ -276,6 +297,7 @@ class MultiAgentPatrolling(gym.Env):
         self.fig = None
 
         self.action_space = MultiagentDiscrete(8, self.num_agents)
+        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.scenario_map.shape), dtype=np.float32)
         self.individual_action_state = gym.spaces.Discrete(8)
 
     def reset(self):
@@ -284,7 +306,12 @@ class MultiAgentPatrolling(gym.Env):
         # Reset the ground truth #
         self.gt.reset()
         # Reset the fleet
-        self.fleet.reset()
+        
+        if self.random_inititial_positions:
+            random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.num_agents, replace=False)
+            self.initial_positions = self.visitable_locations[random_positions_indx]
+            
+        self.fleet.reset(initial_positions=self.initial_positions)
 
         # New temporal mask
         self.temporal_map = np.copy(self.fleet.fleet_detection_map)
@@ -402,10 +429,11 @@ class MultiAgentPatrolling(gym.Env):
         return total_rewards, individual_rewards
 
     def get_action_mask(self, ind = 0):
+        """ Return an array of Bools (True means this action for the agent ind causes a collision) """
 
         assert 0 <= ind < self.num_agents, 'Not enough agents!'
 
-        return np.array(list(map(self.fleet.vehicles[0].check_action, np.arange(0, 8))))
+        return np.array(list(map(self.fleet.vehicles[ind].check_action, np.arange(0, 8))))
 
 if __name__ == '__main__':
 

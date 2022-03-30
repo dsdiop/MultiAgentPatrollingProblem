@@ -7,40 +7,43 @@ N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
 visitable_locations = np.vstack(np.where(sc_map != 0)).T
 random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
-initial_positions = visitable_locations[random_index]
+#initial_positions = visitable_locations[random_index]
 
-env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=initial_positions, distance_budget=200,
+env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=50,
                            number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5)
 
-env.reset()
-done = False
+for t in range(10):
+	env.reset()
+	done = False
 
-action = env.action_space.sample()
-while any(env.fleet.check_collisions(action)):
 	action = env.action_space.sample()
+	while any(env.fleet.check_collisions(action)):
+		action = env.action_space.sample()
 
-R = []
-while not done:
+	R = []
 
-	_, r, done, info = env.step(action)
+	while not done:
 
-	if any(env.fleet.check_collisions(action)):
+		_, r, done, info = env.step(action)
 
-		valid = False
+		if any(env.fleet.check_collisions(action)):
 
-		while not valid:
-			new_actions = env.action_space.sample()
-			invalid_mask = env.fleet.check_collisions(action)
-			action[invalid_mask] = new_actions[invalid_mask]
-			valid = not any(env.fleet.check_collisions(action))
+			valid = False
 
-	print("Reward")
-	print(r)
-	R.append(info['individual_rewards'])
+			while not valid:
+				new_actions = env.action_space.sample()
+				invalid_mask = env.fleet.check_collisions(action)
+				action[invalid_mask] = new_actions[invalid_mask]
+				valid = not any(env.fleet.check_collisions(action))
 
-	env.render()
+		print("Reward")
+		print(r)
+		R.append(info['individual_rewards'])
 
-plt.show()
-plt.close()
-plt.plot(np.cumsum(R, axis=0))
-plt.show()
+		env.render()
+
+	#plt.show()
+	#plt.close()
+	#plt.plot(np.cumsum(R, axis=0))
+	#plt.show()
+	#plt.close()
