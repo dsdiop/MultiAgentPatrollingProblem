@@ -1,6 +1,7 @@
 from Environment.PatrollingEnvironments import MultiAgentPatrolling
 from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
+import matplotlib.pyplot as plt
 
 N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
@@ -23,4 +24,28 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        safe_actions=True)
 
 
-multiagent.train(episodes=10000)
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Mar31_11-53-50_M3009R21854/FINALPolicy.pth')
+
+
+done = False
+s = env.reset()
+s = env.reset()
+
+
+env.render()
+R = []
+
+while not done:
+
+    a = multiagent.select_action(s)
+    s,r,done,i = env.step(a)
+    print(np.sum(i['individual_rewards']))
+    R.append(i['individual_rewards'])
+    env.render()
+
+plt.show()
+plt.close()
+print(np.sum(R))
+R = np.asarray(R)
+plt.plot(np.cumsum(R, axis=0))
+plt.show()

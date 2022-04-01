@@ -129,7 +129,7 @@ class MultiAgentDuelingDQNAgent:
 
 		"""Select an action from the input state. If deterministic, no noise is applied. """
 
-		if self.epsilon > np.random.rand() and not self.noisy:
+		if self.epsilon > np.random.rand() and not self.noisy and not self.safe_action:
 			selected_action = self.env.individual_action_state.sample()
 
 		elif not self.safe_action:
@@ -260,24 +260,24 @@ class MultiAgentDuelingDQNAgent:
 
 				# Perform the action and retrieve the next state. #
 				if self.safe_action:
-					safe_mask = np.asarray([self.env.get_action_mask(ind=j) for j in range(self.env.num_agents)])
+					safe_mask = np.asarray([[self.env.get_action_mask(ind=j)] for j in range(self.env.num_agents)])
 
 				# Process the agent step
 				next_state, reward, done = self.step(action)
 
 				if self.safe_action:
-					safe_mask_ = np.asarray([self.env.get_action_mask(ind=j) for j in range(self.env.num_agents)])
-
-				# Compute the safe mask for the transition #
-				if self.safe_action:
-					info = {'safe_mask': safe_mask,
-					        'safe_mask_': safe_mask_}
-				else:
-					info = {}
-
-				# Store every observation for every agent
+					safe_mask_ = np.asarray([[self.env.get_action_mask(ind=j)] for j in range(self.env.num_agents)])
 
 				for j in range(self.env.num_agents):
+
+					# Compute the safe mask for the transition #
+					if self.safe_action:
+						info = {'safe_mask': safe_mask[j],
+								'safe_mask_': safe_mask_[j]}
+					else:
+						info = {}
+
+				# Store every observation for every agent
 					self.transition = [self.env.individual_agent_observation(state=state, agent_num=j),
 					                   action[j],
 					                   reward[j],
