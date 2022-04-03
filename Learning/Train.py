@@ -3,10 +3,11 @@ from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 
 N = 4
-sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
+sc_map = np.genfromtxt('../Environment/ypacarai_map.csv')
+# initial_positions = visitable_locations[random_index]
 
-env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=200,
-                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5)
+env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=1000,
+                           number_of_vehicles=N, seed=0, detection_length=4, max_collisions=500, forget_factor=0.5)
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        memory_size=int(1E5),
