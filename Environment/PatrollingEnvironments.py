@@ -165,9 +165,14 @@ class DiscreteFleet:
 
         # Get the sum (logical or) of the detection maps #
         self.fleet_detection_map = self.vehicles[0].detection_map
+        self.redundancy_map = np.copy(self.fleet_detection_map)
+
         for n in range(1, self.number_of_vehicles):
+            self.redundancy_map += self.fleet_detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
+
+
 
         self.fleet_historic_visited_map = np.copy(self.fleet_detection_map)
 
@@ -183,7 +188,10 @@ class DiscreteFleet:
 
         # Get the sum (logical or) of the detection maps #
         self.fleet_detection_map = self.vehicles[0].detection_map
+        self.redundancy_map = np.copy(self.fleet_detection_map)
+
         for n in range(1, self.number_of_vehicles):
+            self.redundancy_map += self.fleet_detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
 
@@ -227,7 +235,10 @@ class DiscreteFleet:
 
         # Get the sum (logical or) of the detection maps #
         self.fleet_detection_map = self.vehicles[0].detection_map
+        self.redundancy_map = np.copy(self.fleet_detection_map)
+
         for n in range(1, self.number_of_vehicles):
+            self.redundancy_map += self.fleet_detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
 
@@ -417,7 +428,7 @@ class MultiAgentPatrolling(gym.Env):
     def reward_function(self, collision_mask):
 
 
-        individual_rewards = np.array([np.sum(veh.detection_map * (1-self.temporal_map))/(np.pi*self.detection_length**2) for veh in self.fleet.vehicles])
+        individual_rewards = np.array([np.sumnan(veh.detection_map * (1-self.temporal_map))/(np.pi*self.detection_length**2) for veh in self.fleet.vehicles])
 
         collective_reward = np.mean(individual_rewards)
 
