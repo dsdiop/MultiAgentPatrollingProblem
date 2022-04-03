@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 from Environment.groundtruthgenerator import GroundTruth
+from scipy import ndimage
 
 
 class MultiagentDiscrete(gym.Space):
@@ -331,8 +332,11 @@ class MultiAgentPatrolling(gym.Env):
         # New obstacles #
         self.inside_obstacles_map = np.zeros_like(self.scenario_map)
         obstacles_pos_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
-        self.inside_obstacles_map[
-            self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
+        self.inside_obstacles_map[self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
+
+        struct = ndimage.generate_binary_structure(2, 3)
+        self.inside_obstacles_map = np.clip(ndimage.binary_dilation(self.inside_obstacles_map, structure=struct), 0,1).astype(int)
+
         # Update obstacles #
         for i in range(self.num_agents):
             self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
@@ -362,6 +366,7 @@ class MultiAgentPatrolling(gym.Env):
         # State 3 and so on
         for i in range(self.num_agents):
             state[3 + i, self.fleet.vehicles[i].position[0].astype(int), self.fleet.vehicles[i].position[1].astype(int)] = 1.0
+            state[3+i] = ndimage.binary_dilation(state[3+i], structure=ndimage.generate_binary_structure(2, 2))
 
         self.state = state
 
@@ -453,12 +458,10 @@ class MultiAgentPatrolling(gym.Env):
 
 if __name__ == '__main__':
 
-    sc_map = np.genfromtxt('example_map.csv', delimiter=',')
-
-    initial_positions = np.array([[30, 20], [40, 20], [20, 20], [10, 20]])
-
-    env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=initial_positions, distance_budget=200,
-                               number_of_vehicles=4, seed=0, detection_length=2, max_collisions=10000, forget_factor = 0.5)
+    N = 5
+    sc_map = np.genfromtxt('./ypacarai_map.csv')
+    env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=200,
+                               number_of_vehicles=N, seed=0, detection_length=5, max_collisions=10000, forget_factor = 0.5)
 
     env.reset()
 
