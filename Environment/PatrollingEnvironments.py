@@ -179,6 +179,7 @@ class DiscreteFleet:
 
         # Get the sum (logical or) of the detection maps #
         self.fleet_detection_map = self.vehicles[0].detection_map
+
         self.redundancy_map = np.copy(self.fleet_detection_map)
 
         for n in range(1, self.number_of_vehicles):
@@ -429,7 +430,7 @@ class MultiAgentPatrolling(gym.Env):
 
         individual_rewards = np.array([np.nansum(
             self.gt.read() * self.fleet.redundancy_map * veh.detection_map * (1 - self.temporal_map) / (
-                        np.pi * self.detection_length ** 2) / self.fleet.redundancy_map) for veh in
+                        np.pi * self.detection_length ** 2) / (1E-10 + self.fleet.redundancy_map)) for veh in
                                        self.fleet.vehicles])
 
         total_rewards = individual_rewards
