@@ -5,13 +5,7 @@ from Environment.groundtruthgenerator import GroundTruth
 
 
 class MultiagentDiscrete(gym.Space):
-    r"""A multiagent discrete space in :math:`\{ 0, 1, \\dots, n-1 \}`.
 
-    Example::
-
-        >>> Discrete(2)
-
-    """
     def __init__(self, n_actions, n_agents):
         assert n_actions >= 0
         self.n = n_actions
@@ -46,7 +40,6 @@ class DiscreteVehicle:
         self.action_space = gym.spaces.Discrete(n_actions)
         self.angle_set = np.linspace(0, 2 * np.pi, n_actions, endpoint=False)
         self.movement_length = movement_length
-
 
     def move(self, action):
 
@@ -88,7 +81,7 @@ class DiscreteVehicle:
 
         known_mask = np.zeros_like(self.navigation_map)
 
-        px, py = self.position
+        px, py = self.position.astype(int)
 
         # State - coverage area #
         x = np.arange(0, self.navigation_map.shape[0])
@@ -168,11 +161,9 @@ class DiscreteFleet:
         self.redundancy_map = np.copy(self.fleet_detection_map)
 
         for n in range(1, self.number_of_vehicles):
-            self.redundancy_map += self.fleet_detection_map
+            self.redundancy_map += self.vehicles[n].detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
-
-
 
         self.fleet_historic_visited_map = np.copy(self.fleet_detection_map)
 
@@ -191,7 +182,7 @@ class DiscreteFleet:
         self.redundancy_map = np.copy(self.fleet_detection_map)
 
         for n in range(1, self.number_of_vehicles):
-            self.redundancy_map += self.fleet_detection_map
+            self.redundancy_map += self.vehicles[n].detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
 
@@ -238,7 +229,7 @@ class DiscreteFleet:
         self.redundancy_map = np.copy(self.fleet_detection_map)
 
         for n in range(1, self.number_of_vehicles):
-            self.redundancy_map += self.fleet_detection_map
+            self.redundancy_map += self.vehicles[n].detection_map
             self.fleet_detection_map = np.logical_or(self.fleet_detection_map,
                                                      self.vehicles[n].detection_map)
 
@@ -265,19 +256,28 @@ class DiscreteFleet:
 class MultiAgentPatrolling(gym.Env):
 
     def __init__(self, scenario_map, distance_budget,
-                 number_of_vehicles, initial_positions=None, seed=0, detection_length=2, max_collisions = 5, forget_factor = 1):
+                 number_of_vehicles, initial_positions=None, seed=0, detection_length=2, max_collisions = 5, forget_factor = 1, reward_type='individual'):
 
         # Scenario map
+        self.im4 = None
+        self.im2 = None
+        self.im1 = None
+        self.im0 = None
+        self.im3 = None
+
+        assert reward_type in ['individual', 'shared'], "Bad Reward type! Choose from individual/shared"
+
+        self.reward_type = reward_type
         self.scenario_map = scenario_map
         self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
 
         # Initial positions
         if initial_positions is None:
-            self.random_inititial_positions = True
+            self.random_initial_positions = True
             random_positions_indx = np.random.choice(np.arange(0,len(self.visitable_locations)), number_of_vehicles, replace = False)
             self.initial_positions = self.visitable_locations[random_positions_indx]
         else:
-            self.random_inititial_positions = False
+            self.random_initial_positions = False
             self.initial_positions = initial_positions
 
         # Number of pixels
@@ -318,7 +318,7 @@ class MultiAgentPatrolling(gym.Env):
         self.gt.reset()
         # Reset the fleet
         
-        if self.random_inititial_positions:
+        if self.random_initial_positions:
             random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.num_agents, replace=False)
             self.initial_positions = self.visitable_locations[random_positions_indx]
             
@@ -427,12 +427,16 @@ class MultiAgentPatrolling(gym.Env):
 
     def reward_function(self, collision_mask):
 
+        individual_rewards = np.array([np.nansum(
+            self.gt.read() * self.fleet.redundancy_map * veh.detection_map * (1 - self.temporal_map) / (
+                        np.pi * self.detection_length ** 2) / self.fleet.redundancy_map) for veh in
+                                       self.fleet.vehicles])
 
-        individual_rewards = np.array([np.sumnan(veh.detection_map * (1-self.temporal_map))/(np.pi*self.detection_length**2) for veh in self.fleet.vehicles])
+        total_rewards = individual_rewards
 
-        collective_reward = np.mean(individual_rewards)
-
-        total_rewards = individual_rewards + collective_reward
+        if self.reward_type == "shared":
+            collective_reward = np.mean(individual_rewards)
+            total_rewards += collective_reward
 
         total_rewards[collision_mask] = -1.0
 
