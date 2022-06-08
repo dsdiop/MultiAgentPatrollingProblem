@@ -34,7 +34,7 @@ class MultiAgentDuelingDQNAgent:
 			noisy: bool = False,
 			logdir=None,
 			log_name="Experiment",
-			safe_actions=False,
+			save_every=None,
 			train_every=1,
 	):
 		"""
@@ -53,20 +53,19 @@ class MultiAgentDuelingDQNAgent:
 		:param number_of_features: Number of features after the visual extractor
 		:param logdir: Directory to save the tensorboard log
 		:param log_name: Name of the tb log
-		:param safe_actions: Safe action flag
 		"""
 
 		""" Logging parameters """
 		self.logdir = logdir
 		self.experiment_name = log_name
 		self.writer = None
+		self.save_every = save_every
 
 		""" Observation space dimensions """
 		obs_dim = env.observation_space.shape
 		action_dim = env.action_space.n
 
 		""" Agent embeds the environment """
-		self.safe_action = safe_actions
 		self.env = env
 		self.batch_size = batch_size
 		self.target_update = target_update
@@ -129,12 +128,9 @@ class MultiAgentDuelingDQNAgent:
 
 		"""Select an action from the input state. If deterministic, no noise is applied. """
 
-		if self.epsilon > np.random.rand() and not self.noisy and not self.safe_action:
-			selected_action = self.env.individual_action_state.sample()
+		if self.epsilon > np.random.rand() and not self.noisy:
+			selected_action = self.env.action_space.sample()
 
-		elif not self.safe_action:
-			selected_action = self.dqn(torch.FloatTensor(singular_state).unsqueeze(0).to(self.device)).argmax()
-			selected_action = selected_action.detach().cpu().numpy()
 		else:
 			q_values = self.dqn(torch.FloatTensor(singular_state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
 			mask = self.env.get_action_mask(ind)  # True means invalid
@@ -146,7 +142,7 @@ class MultiAgentDuelingDQNAgent:
 	def select_action(self, state: np.ndarray):
 
 		selected_action = []
-		for i in range(self.env.num_agents):
+		for i in range(self.env.number_of_agents):
 			individual_state = self.env.individual_agent_observation(state=state, agent_num=i)
 			selected_action.append(self.individual_select_action(individual_state, ind=i))
 
@@ -252,30 +248,16 @@ class MultiAgentDuelingDQNAgent:
 			# Run an episode #
 			while not done:
 
-				# Inrease the plaed steps #
+				# Inrease the played steps #
 				steps += 1
 
 				# Select the action using the current policy
 				action = self.select_action(state)
 
-				# Perform the action and retrieve the next state. #
-				if self.safe_action:
-					safe_mask = np.asarray([[self.env.get_action_mask(ind=j)] for j in range(self.env.num_agents)])
-
 				# Process the agent step
 				next_state, reward, done = self.step(action)
 
-				if self.safe_action:
-					safe_mask_ = np.asarray([[self.env.get_action_mask(ind=j)] for j in range(self.env.num_agents)])
-
-				for j in range(self.env.num_agents):
-
-					# Compute the safe mask for the transition #
-					if self.safe_action:
-						info = {'safe_mask': safe_mask[j],
-								'safe_mask_': safe_mask_[j]}
-					else:
-						info = {}
+				for j in range(self.env.number_of_agents):
 
 				# Store every observation for every agent
 					self.transition = [self.env.individual_agent_observation(state=state, agent_num=j),
@@ -283,7 +265,7 @@ class MultiAgentDuelingDQNAgent:
 					                   reward[j],
 					                   self.env.individual_agent_observation(state=next_state, agent_num=j),
 					                   done,
-					                   info]
+					                   {}]
 
 					self.memory.store(*self.transition)
 
@@ -331,8 +313,12 @@ class MultiAgentDuelingDQNAgent:
 					elif episode % self.target_update == 0 and done:
 						self._target_hard_update()
 
+			if self.save_every is not None:
+				if episode % self.save_every == 0:
+					self.save_model(name=f'Episode_{episode}_Policy.pth')
+
 		# Save the final policy #
-		self.save_model(name='FINALPolicy.pth')
+		self.save_model(name='Final_Policy.pth')
 
 	def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
 
@@ -351,19 +337,7 @@ class MultiAgentDuelingDQNAgent:
 		done_mask = 1 - done
 
 		with torch.no_grad():
-
-			if self.safe_action:
-				info_dictionaries = samples["info"]
-				unsafe_next_q_values = self.dqn_target(next_state)
-
-				for mask_dictionary, q_values in zip(info_dictionaries, unsafe_next_q_values):
-					q_values[mask_dictionary['safe_mask_']] = -np.inf
-
-				next_q_value = unsafe_next_q_values.max(dim=1, keepdim=True)[0]
-
-			else:
-				next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
-
+			next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
 			target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
 
 		# calculate element-wise dqn loss
