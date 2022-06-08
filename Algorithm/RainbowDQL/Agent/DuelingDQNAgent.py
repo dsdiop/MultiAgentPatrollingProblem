@@ -133,8 +133,6 @@ class MultiAgentDuelingDQNAgent:
 
 		else:
 			q_values = self.dqn(torch.FloatTensor(singular_state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
-			mask = self.env.get_action_mask(ind)  # True means invalid
-			q_values.squeeze(0)[mask] = -np.inf
 			selected_action = np.argmax(q_values)
 
 		return selected_action

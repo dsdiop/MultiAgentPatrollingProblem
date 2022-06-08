@@ -390,7 +390,6 @@ class MultiAgentPatrolling(gym.Env):
         """ Applied the attrition term """
         self.importance_matrix = np.clip(self.importance_matrix - self.attrition * self.gt.read() * self.fleet.collective_mask, 0, 1)
 
-
     def update_state(self):
 
         state = np.zeros((3 + self.num_agents, *self.scenario_map.shape))
@@ -430,10 +429,10 @@ class MultiAgentPatrolling(gym.Env):
 
         if self.networked_agents:
 
-            if self.fleet.isolated_mask.any():
+            if self.fleet.isolated_mask.any() and self.hard_newtworked_penalization:
                 done = True
-            elif not self.hard_newtworked_penalization:
-                self.number_of_disconnections += np.sum(self.fleet.danger_of_isolation.astype(int))
+            else:
+                self.number_of_disconnections += np.sum(self.fleet.danger_of_isolation)
                 if self.number_of_disconnections > self.max_number_of_disconnections:
                     done = True
 

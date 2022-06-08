@@ -10,7 +10,9 @@ random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replac
 initial_positions = visitable_locations[random_index]
 
 env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_positions, distance_budget=200,
-                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5, attrittion=0.1)
+                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5,
+                           attrittion=0.1, networked_agents=True, max_connection_distance=20, min_isolation_distance=10,
+                           max_number_of_disconnections=50)
 
 for t in range(1):
 	env.reset()
@@ -39,7 +41,7 @@ for t in range(1):
 				valid = not any(env.fleet.check_collisions(action))
 
 		print("Reward")
-		print(r)
+		print(env.number_of_disconnections)
 
 		env.render()
 
