@@ -2,19 +2,18 @@ from Environment.PatrollingEnvironments import MultiAgentPatrolling
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
-visitable_locations = np.vstack(np.where(sc_map != 0)).T
-random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
-initial_positions = visitable_locations[random_index]
+initial_positions = np.asarray([[24,21],[28,24],[27,19],[24,24]])
 
 env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_positions, distance_budget=200,
                            number_of_vehicles=N, seed=0, detection_length=2, max_collisions=1, forget_factor=0.5,
-                           attrittion=0.1, networked_agents=False, max_connection_distance=20, min_isolation_distance=10,
+                           attrittion=0.1, networked_agents=False, max_connection_distance=20,
+                           min_isolation_distance=10,
                            max_number_of_disconnections=50)
 
-for t in range(1):
+for t in range(10):
+
 	env.reset()
 	done = False
 
@@ -24,6 +23,7 @@ for t in range(1):
 
 	R = []
 	tt = 0
+	R = 0
 	while not done:
 
 		tt += 1
@@ -41,11 +41,12 @@ for t in range(1):
 				valid = not any(env.fleet.check_collisions(action))
 
 		env.render()
-
+		R += r
+		print(r)
 	print(tt)
 
-	#plt.show()
-	#plt.close()
-	#plt.plot(np.cumsum(R, axis=0))
-	#plt.show()
-	#plt.close()
+# plt.show()
+# plt.close()
+# plt.plot(np.cumsum(R, axis=0))
+# plt.show()
+# plt.close()

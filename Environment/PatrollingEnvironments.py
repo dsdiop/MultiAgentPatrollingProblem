@@ -82,6 +82,7 @@ class DiscreteVehicle:
 
         known_mask = np.zeros_like(self.navigation_map)
 
+
         px, py = self.position
 
         # State - coverage area #
@@ -344,9 +345,11 @@ class MultiAgentPatrolling(gym.Env):
         self.individual_action_state = gym.spaces.Discrete(8)
 
         self.networked_agents = networked_agents
-        self.hard_newtworked_penalization = False
+        self.hard_networked_penalization = False
         self.number_of_disconnections = 0
         self.max_number_of_disconnections = max_number_of_disconnections
+
+        self.reward_normalization_value = self.fleet.vehicles[0].detection_mask
 
     def reset(self):
         """ Reset the environment """
@@ -428,7 +431,7 @@ class MultiAgentPatrolling(gym.Env):
 
         if self.networked_agents:
 
-            if self.fleet.isolated_mask.any() and self.hard_newtworked_penalization:
+            if self.fleet.isolated_mask.any() and self.hard_networked_penalization:
                 done = True
             else:
                 self.number_of_disconnections += np.sum(self.fleet.danger_of_isolation)
@@ -485,7 +488,7 @@ class MultiAgentPatrolling(gym.Env):
         """
 
         rewards = np.array(
-            [np.nanmean(veh.detection_mask * self.importance_matrix * self.idleness_matrix / self.fleet.redundancy_mask) for veh in self.fleet.vehicles]
+            [np.sum(self.importance_matrix[veh.detection_mask.astype(bool)] * self.idleness_matrix[veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
         )
 
         rewards[collision_mask] = -1.0
