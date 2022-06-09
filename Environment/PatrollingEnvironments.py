@@ -288,7 +288,7 @@ class MultiAgentPatrolling(gym.Env):
                  max_connection_distance = 10,
                  min_isolation_distance = 5,
                  max_number_of_disconnections = 10,
-                 attrittion = 0):
+                 attrittion = 0.0):
 
         # Scenario map
         self.scenario_map = scenario_map
@@ -309,7 +309,6 @@ class MultiAgentPatrolling(gym.Env):
         self.distance_budget = distance_budget
         self.max_number_of_movements = distance_budget // detection_length
         # Number of agents
-        self.num_agents = number_of_vehicles
         self.seed = seed
         # Detection radius
         self.detection_length = detection_length
@@ -319,7 +318,7 @@ class MultiAgentPatrolling(gym.Env):
         self.max_connection_distance = max_connection_distance
         self.min_isolation_distance = min_isolation_distance
 
-        self.fleet = DiscreteFleet(number_of_vehicles=self.num_agents,
+        self.fleet = DiscreteFleet(number_of_vehicles=self.number_of_agents,
                                    n_actions=8,
                                    fleet_initial_positions=self.initial_positions,
                                    movement_length=self.detection_length,
@@ -327,7 +326,7 @@ class MultiAgentPatrolling(gym.Env):
                                    max_connection_distance=self.max_connection_distance,
                                    min_isolation_distance=self.min_isolation_distance)
 
-        self.max_collisions = max_collisions * self.num_agents
+        self.max_collisions = max_collisions * self.number_of_agents
 
         self.gt = GroundTruth(1 - self.scenario_map, 1, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
 
@@ -340,7 +339,7 @@ class MultiAgentPatrolling(gym.Env):
         self.state = None
         self.fig = None
 
-        self.action_space = MultiagentDiscrete(8, self.num_agents)
+        self.action_space = gym.spaces.Discrete(8)
         self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.scenario_map.shape), dtype=np.float32)
         self.individual_action_state = gym.spaces.Discrete(8)
 
@@ -358,7 +357,7 @@ class MultiAgentPatrolling(gym.Env):
         # Reset the fleet
         
         if self.random_inititial_positions:
-            random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.num_agents, replace=False)
+            random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents, replace=False)
             self.initial_positions = self.visitable_locations[random_positions_indx]
             
         self.fleet.reset(initial_positions=self.initial_positions)
@@ -373,7 +372,7 @@ class MultiAgentPatrolling(gym.Env):
         self.inside_obstacles_map[
             self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
         # Update obstacles #
-        for i in range(self.num_agents):
+        for i in range(self.number_of_agents):
             self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
 
         self.update_state()
@@ -392,7 +391,7 @@ class MultiAgentPatrolling(gym.Env):
 
     def update_state(self):
 
-        state = np.zeros((3 + self.num_agents, *self.scenario_map.shape))
+        state = np.zeros((3 + self.number_of_agents, *self.scenario_map.shape))
 
         # State 0 -> Known boundaries
         state[0] = self.scenario_map - np.logical_and(self.inside_obstacles_map, self.fleet.historic_visited_mask)
@@ -402,7 +401,7 @@ class MultiAgentPatrolling(gym.Env):
         state[2] = self.importance_matrix * self.fleet.historic_visited_mask
 
         # State 3 and so on
-        for i in range(self.num_agents):
+        for i in range(self.number_of_agents):
             state[3 + i,
                   self.fleet.vehicles[i].position[0].astype(int),
                   self.fleet.vehicles[i].position[1].astype(int)] = 1.0
@@ -450,14 +449,14 @@ class MultiAgentPatrolling(gym.Env):
             self.im1 = self.axs[1].imshow(self.state[1], interpolation = 'bicubic', cmap='jet_r')
             self.im2 = self.axs[2].imshow(self.state[2], interpolation = 'bicubic', cmap='coolwarm')
             self.im3 = self.axs[3].imshow(self.state[3], cmap='gray')
-            self.im4 = self.axs[4].imshow(np.clip(np.sum(self.state[4:self.num_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1), cmap='gray')
+            self.im4 = self.axs[4].imshow(np.clip(np.sum(self.state[4:self.number_of_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1), cmap='gray')
 
 
         self.im0.set_data(self.state[0])
         self.im1.set_data(self.state[1])
         self.im2.set_data(self.state[2])
         self.im3.set_data(self.state[3])
-        self.im4.set_data(np.clip(np.sum(self.state[4:self.num_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1))
+        self.im4.set_data(np.clip(np.sum(self.state[4:self.number_of_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1))
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -470,13 +469,13 @@ class MultiAgentPatrolling(gym.Env):
 
         if state is None:
             state = self.state
-        assert 0 <= agent_num <= self.num_agents - 1, "Not enough agents for this observation request. "
+        assert 0 <= agent_num <= self.number_of_agents - 1, "Not enough agents for this observation request. "
 
         index = [0, 1, 2, 3 + agent_num]
 
         common_states = state[index]
 
-        other_agents_positions_state = np.sum(state[np.delete(np.arange(3, 3 + self.num_agents), agent_num), :, :], axis=0)
+        other_agents_positions_state = np.sum(state[np.delete(np.arange(3, 3 + self.number_of_agents), agent_num), :, :], axis=0)
 
         return np.concatenate((common_states, other_agents_positions_state[np.newaxis]), axis = 0)
 
@@ -486,7 +485,7 @@ class MultiAgentPatrolling(gym.Env):
         """
 
         rewards = np.array(
-            [np.nansum(veh.detection_mask * self.importance_matrix * self.idleness_matrix / self.fleet.redundancy_mask) for veh in self.fleet.vehicles]
+            [np.nanmean(veh.detection_mask * self.importance_matrix * self.idleness_matrix / self.fleet.redundancy_mask) for veh in self.fleet.vehicles]
         )
 
         rewards[collision_mask] = -1.0
@@ -499,7 +498,7 @@ class MultiAgentPatrolling(gym.Env):
     def get_action_mask(self, ind=0):
         """ Return an array of Bools (True means this action for the agent ind causes a collision) """
 
-        assert 0 <= ind < self.num_agents, 'Not enough agents!'
+        assert 0 <= ind < self.number_of_agents, 'Not enough agents!'
 
         return np.array(list(map(self.fleet.vehicles[ind].check_action, np.arange(0, 8))))
 
@@ -509,9 +508,19 @@ if __name__ == '__main__':
 
     initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])
 
-    env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_positions, distance_budget=200,
-                               number_of_vehicles=4, seed=0, detection_length=2, max_collisions=10000, forget_factor = 0.5,
-                               networked_agents=True)
+    env = MultiAgentPatrolling(scenario_map=sc_map,
+                               fleet_initial_positions=initial_positions,
+                               distance_budget=200,
+                               number_of_vehicles=4,
+                               seed=0,
+                               detection_length=2,
+                               max_collisions=1,
+                               forget_factor=0.5,
+                               attrittion=0.1,
+                               networked_agents=False,
+                               max_connection_distance=20,
+                               min_isolation_distance=10,
+                               max_number_of_disconnections=50)
 
     env.reset()
 
@@ -521,7 +530,7 @@ if __name__ == '__main__':
 
     while not done:
 
-        s,r,done,_ = env.step(env.action_space.sample())
+        s,r,done,_ = env.step([env.action_space.sample() for _ in range(4)])
         env.render()
         print(r)
         R.append(r)

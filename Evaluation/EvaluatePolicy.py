@@ -4,10 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 N = 4
-sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
+sc_map = np.genfromtxt('../Environment/ypacarai_map.csv')
+# initial_positions = visitable_locations[random_index]
 
-env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=200,
-                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5)
+env = MultiAgentPatrolling(scenario_map=sc_map, initial_positions=None, distance_budget=1000,
+                           number_of_vehicles=N, seed=0, detection_length=4, max_collisions=5, forget_factor=0.5)
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        memory_size=int(1E5),
@@ -20,15 +21,14 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        learning_starts=10,
                                        gamma=0.99,
                                        lr=1e-4,
-                                       noisy=True,
-                                       safe_actions=True)
+                                       noisy=False,
+                                       safe_actions=False)
 
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Mar31_11-53-50_M3009R21854/FINALPolicy.pth')
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Apr03_10-54-25_M3009R21854/BestPolicy.pth')
 
-
+multiagent.epsilon = 0
 done = False
-s = env.reset()
 s = env.reset()
 
 
@@ -41,8 +41,9 @@ while not done:
     s,r,done,i = env.step(a)
     print(np.sum(i['individual_rewards']))
     R.append(i['individual_rewards'])
-    env.render()
 
+
+env.render()
 plt.show()
 plt.close()
 print(np.sum(R))

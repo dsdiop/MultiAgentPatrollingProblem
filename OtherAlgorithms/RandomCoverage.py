@@ -10,7 +10,7 @@ random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replac
 initial_positions = visitable_locations[random_index]
 
 env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_positions, distance_budget=200,
-                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=5, forget_factor=0.5,
+                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=1, forget_factor=0.5,
                            attrittion=0.1, networked_agents=False, max_connection_distance=20, min_isolation_distance=10,
                            max_number_of_disconnections=50)
 
@@ -18,14 +18,15 @@ for t in range(1):
 	env.reset()
 	done = False
 
-	action = env.action_space.sample()
+	action = np.asarray([env.action_space.sample() for _ in range(N)])
 	while any(env.fleet.check_collisions(action)):
-		action = env.action_space.sample()
+		action = np.asarray([env.action_space.sample() for _ in range(N)])
 
 	R = []
-
+	tt = 0
 	while not done:
 
+		tt += 1
 		print(env.fleet.danger_of_isolation)
 
 		_, r, done, info = env.step(action)
@@ -33,17 +34,15 @@ for t in range(1):
 		if any(env.fleet.check_collisions(action)):
 
 			valid = False
-
 			while not valid:
-				new_actions = env.action_space.sample()
-				invalid_mask = env.fleet.check_collisions(action)
-				action[invalid_mask] = new_actions[invalid_mask]
+				new_actions = np.asarray([env.action_space.sample() for _ in range(N)])
+				collision_mask = env.fleet.check_collisions(action)
+				action[collision_mask] = new_actions[collision_mask]
 				valid = not any(env.fleet.check_collisions(action))
 
-		print("Reward")
-		print(env.number_of_disconnections)
-
 		env.render()
+
+	print(tt)
 
 	#plt.show()
 	#plt.close()
