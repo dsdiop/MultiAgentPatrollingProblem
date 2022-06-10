@@ -46,7 +46,7 @@ class DiscreteVehicle:
 
         self.distance += self.movement_length
         angle = self.angle_set[action]
-        movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])
+        movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)]).astype(int)
         next_position = self.position + movement
 
         if self.check_collision(next_position):
@@ -82,8 +82,7 @@ class DiscreteVehicle:
 
         known_mask = np.zeros_like(self.navigation_map)
 
-
-        px, py = self.position
+        px, py = self.position.astype(int)
 
         # State - coverage area #
         x = np.arange(0, self.navigation_map.shape[0])
@@ -289,7 +288,8 @@ class MultiAgentPatrolling(gym.Env):
                  max_connection_distance = 10,
                  min_isolation_distance = 5,
                  max_number_of_disconnections = 10,
-                 attrittion = 0.0):
+                 attrittion = 0.0,
+                 obstacles = False):
 
         # Scenario map
         self.scenario_map = scenario_map
@@ -306,6 +306,7 @@ class MultiAgentPatrolling(gym.Env):
             self.random_inititial_positions = False
             self.initial_positions = fleet_initial_positions
 
+        self.obstacles = obstacles
         # Number of pixels
         self.distance_budget = distance_budget
         self.max_number_of_movements = distance_budget // detection_length
@@ -370,13 +371,14 @@ class MultiAgentPatrolling(gym.Env):
         self.idleness_matrix = 1 - np.copy(self.fleet.collective_mask)
 
         # New obstacles #
-        self.inside_obstacles_map = np.zeros_like(self.scenario_map)
-        obstacles_pos_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
-        self.inside_obstacles_map[
-            self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
-        # Update obstacles #
-        for i in range(self.number_of_agents):
-            self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
+        if self.obstacles:
+            self.inside_obstacles_map = np.zeros_like(self.scenario_map)
+            obstacles_pos_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
+            self.inside_obstacles_map[
+                self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
+            # Update obstacles #
+            for i in range(self.number_of_agents):
+                self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
 
         self.update_state()
 
@@ -397,7 +399,11 @@ class MultiAgentPatrolling(gym.Env):
         state = np.zeros((3 + self.number_of_agents, *self.scenario_map.shape))
 
         # State 0 -> Known boundaries
-        state[0] = self.scenario_map - np.logical_and(self.inside_obstacles_map, self.fleet.historic_visited_mask)
+        if self.obstacles:
+            state[0] = self.scenario_map - np.logical_and(self.inside_obstacles_map, self.fleet.historic_visited_mask)
+        else:
+            state[0] = self.scenario_map
+
         # State 1 -> Temporal mask
         state[1] = self.idleness_matrix
         # State 2 -> Known information
@@ -491,7 +497,7 @@ class MultiAgentPatrolling(gym.Env):
             [np.sum(self.importance_matrix[veh.detection_mask.astype(bool)] * self.idleness_matrix[veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
         )
 
-        rewards[collision_mask] = -1.0
+        rewards[collision_mask] = -2.0
 
         if self.networked_agents:
             rewards[self.fleet.isolated_mask] += -1.0

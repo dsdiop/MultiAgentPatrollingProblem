@@ -10,7 +10,8 @@ env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_
                            number_of_vehicles=N, seed=0, detection_length=2, max_collisions=1, forget_factor=0.5,
                            attrittion=0.1, networked_agents=False, max_connection_distance=20,
                            min_isolation_distance=10,
-                           max_number_of_disconnections=50)
+                           max_number_of_disconnections=50,
+                           obstacles=False)
 
 for t in range(10):
 
@@ -27,7 +28,6 @@ for t in range(10):
 	while not done:
 
 		tt += 1
-		print(env.fleet.danger_of_isolation)
 
 		_, r, done, info = env.step(action)
 
@@ -42,8 +42,8 @@ for t in range(10):
 
 		env.render()
 		R += r
-		print(r)
-	print(tt)
+		print(env.fleet.agent_positions)
+
 
 # plt.show()
 # plt.close()
