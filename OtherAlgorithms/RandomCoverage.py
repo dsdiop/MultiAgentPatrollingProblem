@@ -6,11 +6,21 @@ N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
 initial_positions = np.asarray([[24,21],[28,24],[27,19],[24,24]])
 
-env = MultiAgentPatrolling(scenario_map=sc_map, fleet_initial_positions=initial_positions, distance_budget=200,
-                           number_of_vehicles=N, seed=0, detection_length=2, max_collisions=1, forget_factor=0.5,
-                           attrittion=0.1, networked_agents=False, max_connection_distance=20,
-                           min_isolation_distance=10,
-                           max_number_of_disconnections=50,
+env = MultiAgentPatrolling(scenario_map=sc_map,
+                           fleet_initial_positions=initial_positions,
+                           distance_budget=200,
+                           number_of_vehicles=N,
+                           seed=0,
+                           detection_length=2,
+                           movement_length=1,
+                           max_collisions=5,
+                           forget_factor=0.5,
+                           attrittion=0.1,
+                           networked_agents=False,
+                           hard_penalization=False,
+                           max_connection_distance=7,
+                           optimal_connection_distance=3,
+                           max_number_of_disconnections=10,
                            obstacles=False)
 
 for t in range(10):
@@ -29,8 +39,6 @@ for t in range(10):
 
 		tt += 1
 
-		_, r, done, info = env.step(action)
-
 		if any(env.fleet.check_collisions(action)):
 
 			valid = False
@@ -40,9 +48,13 @@ for t in range(10):
 				action[collision_mask] = new_actions[collision_mask]
 				valid = not any(env.fleet.check_collisions(action))
 
+		_, r, done, info = env.step(action)
+
+
+
 		env.render()
 		R += r
-		print(env.fleet.agent_positions)
+		print(env.fleet.get_distances())
 
 
 # plt.show()

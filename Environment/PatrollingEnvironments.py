@@ -45,10 +45,10 @@ class DiscreteVehicle:
 	def move(self, action, valid=True):
 		""" Move a vehicle in the direction of the action. If valid is False, the action is not performed. """
 
-		self.distance += self.movement_length
 		angle = self.angle_set[action]
-		movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)]).astype(int)
+		movement = np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int)
 		next_position = self.position + movement
+		self.distance += np.linalg.norm(self.position - next_position)
 
 		if self.check_collision(next_position) or not valid:
 			collide = True
@@ -100,7 +100,7 @@ class DiscreteVehicle:
 		""" Return True if the action leads to a collision """
 
 		angle = self.angle_set[action]
-		movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])
+		movement = np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int)
 		next_position = self.position + movement
 
 		return self.check_collision(next_position)
@@ -429,8 +429,6 @@ class MultiAgentPatrolling(gym.Env):
 		# Process action movement
 		collision_mask = self.fleet.move(action)
 
-
-
 		# Compute reward
 		reward = self.reward_function(collision_mask)
 
@@ -442,8 +440,7 @@ class MultiAgentPatrolling(gym.Env):
 		self.update_state()
 
 		# Final condition #
-		done = np.mean(
-			self.fleet.get_distances()) > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions
+		done = np.mean(self.fleet.get_distances()) > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions
 
 		if self.networked_agents:
 
@@ -536,16 +533,18 @@ if __name__ == '__main__':
 	                           fleet_initial_positions=initial_positions,
 	                           distance_budget=200,
 	                           number_of_vehicles=4,
-	                           seed=0,
+	                           seed=10,
 	                           detection_length=2,
-	                           max_collisions=1,
+	                           movement_length=1,
+	                           max_collisions=5,
 	                           forget_factor=0.5,
 	                           attrittion=0.1,
-	                           networked_agents=True,
-	                           max_connection_distance=20,
-	                           min_isolation_distance=10,
-	                           max_number_of_disconnections=50,
-	                           )
+	                           networked_agents=False,
+	                           hard_penalization=False,
+	                           max_connection_distance=7,
+	                           optimal_connection_distance=3,
+	                           max_number_of_disconnections=10,
+	                           obstacles=False)
 
 	env.reset()
 
