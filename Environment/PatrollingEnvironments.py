@@ -151,6 +151,7 @@ class DiscreteFleet:
 		self.danger_of_isolation = None
 		self.distance_between_agents = None
 		self.optimal_connection_distance = optimal_connection_distance
+		self.number_of_disconnections = 0
 
 	@staticmethod
 	def majority(arr: np.ndarray) -> bool:
@@ -207,6 +208,7 @@ class DiscreteFleet:
 		# True if all agents are further from the max connection distance
 		isolation_mask = self.distance_between_agents > self.max_connection_distance
 		self.isolated_mask = np.asarray([self.majority(value) for value in isolation_mask])
+		self.number_of_disconnections += np.sum(self.isolated_mask)
 
 	def measure(self, gt_field):
 
@@ -242,6 +244,7 @@ class DiscreteFleet:
 		self.measured_values = None
 		self.measured_locations = None
 		self.fleet_collisions = 0
+		self.number_of_disconnections = 0
 
 		# Get the redundancy mask #
 		self.redundancy_mask = np.sum([veh.detection_mask for veh in self.vehicles], axis=0)
@@ -369,7 +372,6 @@ class MultiAgentPatrolling(gym.Env):
 			self.initial_positions = self.visitable_locations[random_positions_indx]
 
 		self.fleet.reset(initial_positions=self.initial_positions)
-		self.number_of_disconnections = 0
 
 		# New idleness mask (1-> high idleness, 0-> just visited)
 		self.idleness_matrix = 1 - np.copy(self.fleet.collective_mask)
@@ -427,6 +429,8 @@ class MultiAgentPatrolling(gym.Env):
 		# Process action movement
 		collision_mask = self.fleet.move(action)
 
+
+
 		# Compute reward
 		reward = self.reward_function(collision_mask)
 
@@ -443,7 +447,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		if self.networked_agents:
 
-			if self.fleet.isolated_mask.any() and self.hard_networked_penalization:
+			if self.fleet.number_of_disconnections > self.max_number_of_disconnections and self.hard_networked_penalization:
 				done = True
 
 		return self.state, reward, done, {}
@@ -509,6 +513,8 @@ class MultiAgentPatrolling(gym.Env):
 			# Apply a penalization from 0 to -1 depending on the exceeding distance from the optimal
 			rewards[self.fleet.danger_of_isolation] -= np.clip(
 				min_distances / (self.max_connection_distance - self.optimal_connection_distance), 0, 1)
+
+			rewards[self.fleet.isolated_mask] = -1.0
 
 		return rewards
 
