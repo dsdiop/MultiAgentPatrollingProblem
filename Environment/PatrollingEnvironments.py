@@ -164,7 +164,7 @@ class DiscreteFleet:
 		for idx, veh in enumerate(self.vehicles):
 
 			angle = veh.angle_set[veh_actions[idx]]
-			movement = np.array([veh.movement_length * np.cos(angle), veh.movement_length * np.sin(angle)]).astype(int)
+			movement = np.round(np.array([veh.movement_length * np.cos(angle), veh.movement_length * np.sin(angle)])).astype(int)
 			new_positions.append(list(veh.position + movement))
 
 		_, inverse_index, counts = np.unique(np.asarray(new_positions), return_inverse=True, return_counts=True, axis=0)

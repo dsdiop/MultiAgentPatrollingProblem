@@ -16,7 +16,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                            seed=0,
                            detection_length=1,
                            movement_length=1,
-                           max_collisions=5,
+                           max_collisions=5000,
                            forget_factor=0.5,
                            attrittion=0.1,
                            networked_agents=True,
@@ -42,9 +42,9 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=20,
                                        save_every=5000)
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun16_20-11-09_M3009R21854/BestPolicy.pth')
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun26_19-13-02_M3009R21854/Episode_75000_Policy.pth')
 
-multiagent.epsilon = 0.0
+multiagent.epsilon = 0.05
 done = False
 s = env.reset()
 
@@ -58,16 +58,17 @@ while not done:
     for i in range(env.number_of_agents):
         individual_state = env.individual_agent_observation(state=s, agent_num=i)
         q_values = multiagent.dqn(torch.FloatTensor(individual_state).unsqueeze(0).to(multiagent.device)).detach().cpu().numpy().flatten()
-        mask = np.asarray([env.fleet.vehicles[i].check_action(a) for a in range(0,8)])
+        mask = np.asarray([env.fleet.vehicles[i].check_action(a) for a in range(0, 8)])
         q_values[mask] = -np.inf
         selected_action.append(np.argmax(q_values))
 
     s, r, done, i = env.step(selected_action)
-    print(env.fleet.number_of_disconnections)
+    print(env.fleet.number_of_disconnections/N)
     env.render()
     R.append(r)
 
 
+print("DONE!")
 env.render()
 plt.show()
 plt.close()

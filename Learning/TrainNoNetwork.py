@@ -33,7 +33,7 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        target_update=1000,
                                        soft_update=False,
                                        tau=0.0001,
-                                       epsilon_values=[1.0, 0.05],
+                                       epsilon_values=[1.0, 0.1],
                                        epsilon_interval=[0.0, 0.33],
                                        learning_starts=0,
                                        gamma=0.99,
@@ -42,4 +42,4 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=10,
                                        save_every=5000)
 
-multiagent.train(episodes=50000)
+multiagent.train(episodes=100000)
