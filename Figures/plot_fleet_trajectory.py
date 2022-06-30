@@ -40,7 +40,7 @@ def interpolate_path(path):
 
 	return np.column_stack((x_i, y_i))
 
-trajectories = pd.read_csv('../OtherAlgorithms/RandomResultsNetworked_paths.csv')
+trajectories = pd.read_csv('../Evaluation/DRLNetworked_paths.csv')
 trajectories = trajectories[trajectories['Run'] == 0].sort_values('Step')
 navigation_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
 x_centroid = trajectories.groupby('Step')['x'].mean().to_numpy()

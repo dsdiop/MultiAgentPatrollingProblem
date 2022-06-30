@@ -10,13 +10,21 @@ mask = np.full_like(nav_map, np.nan)
 mask[np.where(nav_map == 0)] = 1
 gt = GroundTruth(1-nav_map, resolution=1)
 
-N = 4
+N = 1
 
-fig, axs = plt.subplots(1,N)
+fig, axs = plt.subplots(1,1)
+
+axs = [axs] if not hasattr(axs, '__iter__') else axs
+
+
+# Z = None
+Z = np.genfromtxt('../Evaluation/evaluation_map.csv')
 
 for ax in axs:
 
-	Z = gt.read()
+	if Z is None:
+		Z = gt.read()
+
 	im = ax.imshow(Z, cmap='jet', interpolation='bicubic')
 	ax.imshow(mask, cmap='gray_r', zorder=10)
 	ax.set_xticks([])
