@@ -57,34 +57,37 @@ paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
                            directory='./')
 
 multiagent.epsilon = 0.05
-done = False
-s = env.reset()
+
+for run in range(10):
+    done = False
+    s = env.reset()
+    R = 0
+    step = 0
+
+    # Initial register #
+    metrics.register_step(run_num=run, step=step, metrics=[R, env.fleet.number_of_disconnections])
+    for veh_id, veh in enumerate(env.fleet.vehicles):
+        paths.register_step(run_num=run, step=step, metrics=[veh_id, veh.position[0], veh.position[1]])
+
+    while not done:
+
+        selected_action = []
+        for i in range(env.number_of_agents):
+            individual_state = env.individual_agent_observation(state=s, agent_num=i)
+            q_values = multiagent.dqn(torch.FloatTensor(individual_state).unsqueeze(0).to(multiagent.device)).detach().cpu().numpy().flatten()
+            mask = np.asarray([env.fleet.vehicles[i].check_action(a) for a in range(0, 8)])
+            q_values[mask] = -np.inf
+            selected_action.append(np.argmax(q_values))
+
+        s, r, done, i = env.step(selected_action)
+
+        R = np.mean(r) + R
+
+        # Register positions and metrics #
+        metrics.register_step(run_num=run, step=step, metrics=[R, env.fleet.number_of_disconnections])
+        for veh_id, veh in enumerate(env.fleet.vehicles):
+            paths.register_step(run_num=run, step=step, metrics=[veh_id, veh.position[0], veh.position[1]])
+
+        # env.render()
 
 
-
-R = []
-
-while not done:
-
-    selected_action = []
-    for i in range(env.number_of_agents):
-        individual_state = env.individual_agent_observation(state=s, agent_num=i)
-        q_values = multiagent.dqn(torch.FloatTensor(individual_state).unsqueeze(0).to(multiagent.device)).detach().cpu().numpy().flatten()
-        mask = np.asarray([env.fleet.vehicles[i].check_action(a) for a in range(0, 8)])
-        q_values[mask] = -np.inf
-        selected_action.append(np.argmax(q_values))
-
-    s, r, done, i = env.step(selected_action)
-    print(env.fleet.number_of_disconnections/N)
-    env.render()
-    R.append(r)
-
-
-print("DONE!")
-env.render()
-plt.show()
-plt.close()
-print(np.sum(R))
-R = np.asarray(R)
-plt.plot(np.cumsum(R, axis=0))
-plt.show()
