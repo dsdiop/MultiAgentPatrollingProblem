@@ -15,8 +15,9 @@ from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
 N = 4
 sc_map = np.genfromtxt('../../Environment/example_map.csv', delimiter=',')
 initial_positions = np.asarray([[24, 21], [28, 24], [27, 19], [24, 24]])
-NUM_OF_GENERATIONS = 50
-NUM_OF_INDIVIDUALS = 200
+NUM_OF_GENERATIONS = 100
+NUM_OF_INDIVIDUALS = 2000
+NUM_OF_TRIALS = 10
 
 env = MultiAgentPatrolling(scenario_map=sc_map,
                            fleet_initial_positions=initial_positions,
@@ -53,7 +54,7 @@ creator.create("Individual", np.ndarray, fitness=creator.FitnessMax) # Individua
 # Create a toolbox for genetic operations #
 toolbox = base.Toolbox()
 # Cromosome is an action in [0,number_of_actions] #
-toolbox.register("attr_bool", random.randint, 0, 8)
+toolbox.register("attr_bool", random.randint, 0, 7)
 # Each individual is a set of n_agents x 101 steps (this will depend on the number of possible actions for agent)  #
 toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=N*201)
 # Create the population creator #
@@ -66,30 +67,35 @@ def evalEnv(ind, local_env):
     across a lot of different generations, which is, the strongest-average-one. """
 
     # Reset conditions #
-    local_env.reset()
-    fitness = 0
-    done = False
+    fitness = []
+    for run in range(NUM_OF_TRIALS):
 
-    # Slice the individual array into agents actions #
-    # t0 -> [1,2,1,1]
-    # t1 -> [0,1,3,6]
-    # ...
-    # tN -> [2,7,1,7]
+        R = 0
+        local_env.reset()
+        done = False
 
-    # Transform individual in agents actions #
-    action_array = np.asarray(np.split(ind, N)).T
-    action_indx = 0
+        # Slice the individual array into agents actions #
+        # t0 -> [1,2,1,1]
+        # t1 -> [0,1,3,6]
+        # ...
+        # tN -> [2,7,1,7]
 
-    # If the initial action is valid, begin to evaluate #
-    while not done:
+        # Transform individual in agents actions #
+        action_array = np.asarray(np.split(ind, N)).T
+        action_indx = 0
 
-        # ACT!
-        _, r, done, _ = local_env.step(action_array[action_indx])
-        action_indx += 1
-        # Accumulate the reward into the fitness #
-        fitness += np.sum(r)
+        # If the initial action is valid, begin to evaluate #
+        while not done:
 
-    return fitness,
+            # ACT!
+            _, r, done, _ = local_env.step(action_array[action_indx])
+            action_indx += 1
+            # Accumulate the reward into the fitness #
+            R += np.sum(r)
+
+        fitness.append(R)
+
+    return np.mean(fitness),
 
 
 toolbox.register("evaluate", evalEnv, local_env=env)
@@ -182,6 +188,7 @@ if __name__ == "__main__":
 
         # Evaluate the metrics of the solutions #
         action_indx = 0
+        done = False
 
         # If the initial action is valid, begin to evaluate #
         while not done:
