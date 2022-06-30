@@ -44,7 +44,7 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=20,
                                        save_every=5000)
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun26_19-13-02_M3009R21854/Episode_95000_Policy.pth')
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun28_09-16-35_M3009R21854/Final_Policy.pth')
 
 metrics = MetricsDataCreator(metrics_names=['Accumulated Reward', 'Disconnections'],
                              algorithm_name='DRL',
@@ -90,4 +90,5 @@ for run in range(10):
 
         # env.render()
 
-
+metrics.register_experiment()
+paths.register_experiment()
