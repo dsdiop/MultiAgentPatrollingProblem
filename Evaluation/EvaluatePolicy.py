@@ -3,6 +3,8 @@ from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
+
 N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
 visitable_locations = np.vstack(np.where(sc_map != 0)).T
@@ -42,7 +44,17 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=20,
                                        save_every=5000)
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun26_19-13-02_M3009R21854/Episode_75000_Policy.pth')
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun26_19-13-02_M3009R21854/Episode_95000_Policy.pth')
+
+metrics = MetricsDataCreator(metrics_names=['Accumulated Reward', 'Disconnections'],
+                             algorithm_name='DRL',
+                             experiment_name='DRLResultsNetworked',
+                             directory='./')
+
+paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
+                           algorithm_name='DRL',
+                           experiment_name='DRLNetworked_paths',
+                           directory='./')
 
 multiagent.epsilon = 0.05
 done = False
