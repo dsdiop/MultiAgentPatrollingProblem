@@ -15,9 +15,9 @@ from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
 N = 4
 sc_map = np.genfromtxt('../../Environment/example_map.csv', delimiter=',')
 initial_positions = np.asarray([[24, 21], [28, 24], [27, 19], [24, 24]])
-NUM_OF_GENERATIONS = 100
+NUM_OF_GENERATIONS = 150
 NUM_OF_INDIVIDUALS = 2000
-NUM_OF_TRIALS = 10
+NUM_OF_TRIALS = 50
 
 env = MultiAgentPatrolling(scenario_map=sc_map,
                            fleet_initial_positions=initial_positions,
@@ -92,6 +92,9 @@ def evalEnv(ind, local_env):
             action_indx += 1
             # Accumulate the reward into the fitness #
             R += np.sum(r)
+
+            if env.fleet.fleet_collisions > 1:
+                return -1000.0,
 
         fitness.append(R)
 
@@ -204,10 +207,6 @@ if __name__ == "__main__":
             for veh_id, veh in enumerate(env.fleet.vehicles):
                 paths.register_step(run_num=run, step=t, metrics=[veh_id, veh.position[0], veh.position[1]])
 
-
-
-            my_env.render()
-            plt.pause(0.1)
 
 metrics.register_experiment()
 paths.register_experiment()
