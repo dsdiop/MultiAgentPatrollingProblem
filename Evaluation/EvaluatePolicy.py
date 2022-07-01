@@ -21,7 +21,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                            max_collisions=5000,
                            forget_factor=0.5,
                            attrittion=0.1,
-                           networked_agents=True,
+                           networked_agents=False,
                            hard_penalization=False,
                            max_connection_distance=7,
                            optimal_connection_distance=3,
@@ -44,16 +44,16 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=20,
                                        save_every=5000)
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Jun28_09-16-35_M3009R21854/Final_Policy.pth')
+multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Greedy_baseline_no_networked/Episode_45000_Policy.pth')
 
 metrics = MetricsDataCreator(metrics_names=['Accumulated Reward', 'Disconnections'],
                              algorithm_name='DRL',
-                             experiment_name='DRLResultsNetworked',
+                             experiment_name='DRLResults',
                              directory='./')
 
 paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
                            algorithm_name='DRL',
-                           experiment_name='DRLNetworked_paths',
+                           experiment_name='DRL_paths',
                            directory='./')
 
 multiagent.epsilon = 0.05
