@@ -47,16 +47,31 @@ paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
                            directory='./')
 
 
+def createValidIndividual(creator):
+    """ Create a valid individual. """
+
+    env.reset()
+    done_flag = False
+    individual = []
+    while not done_flag:
+        actions = []
+        for veh_id in range(N):
+            mask = np.logical_not(env.get_action_mask(ind=veh_id)).astype(int)
+            action = np.random.choice(np.arange(0,8), p=mask / np.sum(mask))
+            actions.append(action)
+
+        individual.append(actions)
+        _, _, done_flag, _ = env.step(actions)
+
+    return creator(individual)
 
 # --- Create the Genetic Algorihtm Strategies --- #
 creator.create("FitnessMax", base.Fitness, weights=(1.0,)) # This means we want to maximize
 creator.create("Individual", np.ndarray, fitness=creator.FitnessMax) # Individual creator
 # Create a toolbox for genetic operations #
 toolbox = base.Toolbox()
-# Cromosome is an action in [0,number_of_actions] #
-toolbox.register("attr_bool", random.randint, 0, 7)
 # Each individual is a set of n_agents x 101 steps (this will depend on the number of possible actions for agent)  #
-toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=N*201)
+toolbox.register("individual", createValidIndividual, creator.Individual)
 # Create the population creator #
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 

@@ -1,9 +1,20 @@
 from Environment.PatrollingEnvironments import MultiAgentPatrolling
 import numpy as np
 from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
+import matplotlib.pyplot as plt
+
+
+LEFT = 1
+DOWN = 2
+RIGHT = 3
+TOP = 4
+
+GOING_DOWN = 0
+GOING_UP = 1
+
 
 N = 4
-sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
+sc_map = np.genfromtxt('../../Environment/example_map.csv', delimiter=',')
 initial_positions = np.asarray([[24, 21], [28, 24], [27, 19], [24, 24]])
 
 env = MultiAgentPatrolling(scenario_map=sc_map,
@@ -13,7 +24,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                            seed=0,
                            detection_length=2,
                            movement_length=1,
-                           max_collisions=5,
+                           max_collisions=50000,
                            forget_factor=0.5,
                            attrittion=0.1,
                            networked_agents=True,
@@ -24,25 +35,28 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                            obstacles=False)
 
 metrics = MetricsDataCreator(metrics_names=['Accumulated Reward', 'Disconnections'],
-                             algorithm_name='Random Fleet Wandering',
-                             experiment_name='RandomResultsNetworked',
+                             algorithm_name='Lawnmower',
+                             experiment_name='ResultsLM',
                              directory='./')
 
 paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
-                           algorithm_name='Random Fleet Wandering',
-                           experiment_name='RandomResultsNetworked_paths',
+                           algorithm_name='Lawnmower',
+                           experiment_name='ResultsLM_paths',
                            directory='./')
+
+def centroid_position(agents_positions):
+	""" Given a list of agent positions, compute the centroid position. """
+	return np.mean(agents_positions, axis=0)
 
 for run in range(10):
 
-	env.reset()
+	s = env.reset()
 	done = False
-	valid = False
-	while not valid:
-		new_action = env.action_space.sample()
-		action = np.asarray([new_action for _ in range(N)])
-		collision_mask = env.fleet.check_collisions(action)
-		valid = not any(env.fleet.check_collisions(action))
+
+	v_direction = GOING_UP
+	h_direction = LEFT
+	action = 2
+	troubled_path_finded = False
 
 	step = 0
 	R = 0
@@ -56,16 +70,42 @@ for run in range(10):
 
 		step += 1
 
-		if any(env.fleet.check_collisions(action)):
 
-			valid = False
-			while not valid:
-				new_action = env.action_space.sample()
-				action = np.asarray([new_action for _ in range(N)])
-				collision_mask = env.fleet.check_collisions(action)
-				valid = not any(env.fleet.check_collisions(action))
+		actions = [action for _ in range(N)]
+		s, r, done, info = env.step(actions)
 
-		_, r, done, info = env.step(action)
+		positions = np.asarray([veh.position for veh in env.fleet.vehicles])
+		print(np.max(positions[:,0]))
+
+		if any(env.fleet.check_collisions(actions)):
+
+
+			positions = np.asarray([veh.position for veh in env.fleet.vehicles])
+			print(np.min(positions[:,0]))
+			if np.max(positions[:,0]) > 0.85*sc_map.shape[0] and v_direction == GOING_DOWN:
+				v_direction = GOING_UP
+				h_direction = LEFT
+			elif np.min(positions[:,0]) < 0.15*sc_map.shape[0] and v_direction == GOING_UP:
+				print("HERE!")
+				v_direction = GOING_DOWN
+				h_direction = RIGHT
+
+
+			# In case of collision, change the direction:
+			if v_direction == GOING_DOWN:
+				if h_direction == RIGHT:
+					action = 7
+					h_direction = DOWN
+				elif h_direction == DOWN:
+					action = 2
+					h_direction = RIGHT
+			else:
+				if h_direction == LEFT:
+					action = 6
+					h_direction = TOP
+				elif h_direction == TOP:
+					action = 3
+					h_direction = LEFT
 
 		R = np.mean(r) + R
 
@@ -74,7 +114,7 @@ for run in range(10):
 		for veh_id, veh in enumerate(env.fleet.vehicles):
 			paths.register_step(run_num=run, step=step, metrics=[veh_id, veh.position[0], veh.position[1]])
 
-		# env.render()
+		#env.render()
 
 metrics.register_experiment()
 paths.register_experiment()
