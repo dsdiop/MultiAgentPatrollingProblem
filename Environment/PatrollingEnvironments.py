@@ -388,6 +388,8 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.update_state()
 
+		return self.state
+
 	def update_temporal_mask(self):
 
 		self.idleness_matrix = self.idleness_matrix + 1.0 / (self.forget_factor * self.max_number_of_movements)
