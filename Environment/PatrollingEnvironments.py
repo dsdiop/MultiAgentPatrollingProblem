@@ -432,7 +432,7 @@ class MultiAgentPatrolling(gym.Env):
 		collision_mask = self.fleet.move(action)
 
 		# Compute reward
-		reward = self.reward_function(collision_mask)
+		reward = self.reward_function(collision_mask, action)
 
 		# Update idleness and attrition
 		self.update_temporal_mask()
@@ -475,7 +475,9 @@ class MultiAgentPatrolling(gym.Env):
 		self.fig.canvas.draw()
 		self.fig.canvas.flush_events()
 
-		plt.pause(0.1)
+		plt.draw()
+
+		plt.pause(0.01)
 
 	def individual_agent_observation(self, state=None, agent_num=0):
 
@@ -492,7 +494,8 @@ class MultiAgentPatrolling(gym.Env):
 
 		return np.concatenate((common_states, other_agents_positions_state[np.newaxis]), axis=0)
 
-	def reward_function(self, collision_mask):
+
+	def reward_function(self, collision_mask, actions):
 		""" Reward function:
             r(t) = Sum(I(m)*W(m)/Dr(m)) - Pc - Pn
         """
@@ -502,6 +505,9 @@ class MultiAgentPatrolling(gym.Env):
 				veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[
 				veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
+
+		cost = np.array([1 if action % 2 == 0 else np.sqrt(2) for action in actions]).astype(int)
+		rewards = rewards / cost
 
 		rewards[collision_mask] = -2.0
 
@@ -560,6 +566,7 @@ if __name__ == '__main__':
 		print(r)
 		R.append(r)
 		env.individual_agent_observation(agent_num=0)
+		env.render()
 
 	R = np.asarray(R)
 	env.render()
