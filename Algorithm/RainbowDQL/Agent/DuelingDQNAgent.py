@@ -310,8 +310,7 @@ class MultiAgentDuelingDQNAgent:
 					# Update target soft/hard #
 					if self.soft_update:
 						self._target_soft_update()
-
-					elif episode % self.target_update == 0 and not self.soft_update and done:
+					elif episode % self.target_update == 0 and done:
 						self._target_hard_update()
 
 			if self.save_every is not None:
