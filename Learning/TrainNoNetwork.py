@@ -38,8 +38,9 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        learning_starts=0,
                                        gamma=0.99,
                                        lr=1e-4,
-                                       noisy=True,
+                                       noisy=False,
                                        train_every=10,
-                                       save_every=5000)
+                                       save_every=5000,
+                                       distributional=False)
 
 multiagent.train(episodes=100000)

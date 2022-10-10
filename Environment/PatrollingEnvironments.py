@@ -335,7 +335,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.max_collisions = max_collisions
 
-		self.gt = GroundTruth(1 - self.scenario_map, 1, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
+		self.gt = GroundTruth(self.scenario_map, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
 
 		""" Model attributes """
 		self.actual_known_map = None

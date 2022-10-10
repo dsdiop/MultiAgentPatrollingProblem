@@ -11,7 +11,7 @@ class GroundTruth(object):
         and using a Shekel function.
     """
 
-    def __init__(self, grid, resolution, max_number_of_peaks=None, is_bounded = True, seed = 0):
+    def __init__(self, grid, max_number_of_peaks=None, is_bounded = True, seed = 0):
 
         """ Maximum number of peaks encountered in the scenario. """
         self.max_number_of_peaks = 6 if max_number_of_peaks is None else max_number_of_peaks
@@ -19,8 +19,7 @@ class GroundTruth(object):
         np.random.seed(self.seed)
 
         """ random map features creation """
-        self.grid = grid
-        self.resolution = resolution
+        self.grid = 1.0 - grid
         self.xy_size = np.array([self.grid.shape[1]/self.grid.shape[0]*10, 10])
         self.is_bounded = is_bounded
 
@@ -31,10 +30,8 @@ class GroundTruth(object):
         self.C = np.random.rand(self.number_of_peaks, 1) * 4 + 0
 
         """ Creation of the map field """
-        self._x = np.arange(0, self.grid.shape[1],
-                            self.resolution)
-        self._y = np.arange(0, self.grid.shape[0],
-                            self.resolution)
+        self._x = np.arange(0, self.grid.shape[1], 1)
+        self._y = np.arange(0, self.grid.shape[0], 1)
 
         self._x, self._y = np.meshgrid(self._x, self._y)
 
@@ -90,8 +87,8 @@ class GroundTruth(object):
         cs = plt.contour(self.read(), colors='royalblue', alpha=1, linewidths=1)
         plt.clabel(cs, inline=1, fontsize=7)
         plt.title("Nº of peaks: {}".format(gt.number_of_peaks), color='black', fontsize=10)
-        im = plt.plot(self.A[:, 0]*self.grid.shape[0]/self.resolution/10,
-                      self.A[:, 1]*self.grid.shape[1]/self.resolution/10, 'hk', )
+        im = plt.plot(self.A[:, 0]*self.grid.shape[0]/10,
+                      self.A[:, 1]*self.grid.shape[1]/10, 'hk', )
         plt.show()
 
 
@@ -100,7 +97,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     ypacarai_map = np.genfromtxt('example_map.csv',delimiter=',',dtype=float)
-    gt = GroundTruth(1-ypacarai_map, 1, max_number_of_peaks=3, is_bounded=True, seed=10)
+    gt = GroundTruth(ypacarai_map, max_number_of_peaks=3, is_bounded=True, seed=10)
 
     for i in range(1):
         gt.reset()

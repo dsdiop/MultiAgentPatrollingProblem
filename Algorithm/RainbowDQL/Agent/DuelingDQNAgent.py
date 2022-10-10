@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
 from ..ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer
-from ..Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork
+from ..Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
 import torch.nn.functional as F
 
 
@@ -32,6 +32,10 @@ class MultiAgentDuelingDQNAgent:
 			# NN parameters
 			number_of_features: int = 1024,
 			noisy: bool = False,
+			# Distributional parameters #
+			distributional: bool = False,
+			num_atoms: int = 51,
+			v_interval: Tuple[float, float] = (0.0, 100.0),
 			logdir=None,
 			log_name="Experiment",
 			save_every=None,
@@ -78,6 +82,9 @@ class MultiAgentDuelingDQNAgent:
 		self.epsilon = self.epsilon_values[0]
 		self.learning_starts = learning_starts
 		self.noisy = noisy
+		self.distributional = distributional
+		self.v_interval = v_interval
+		self.num_atoms = num_atoms
 		self.train_every = train_every
 
 		""" Automatic selection of the device """
@@ -94,6 +101,10 @@ class MultiAgentDuelingDQNAgent:
 		if self.noisy:
 			self.dqn = NoisyDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 			self.dqn_target = NoisyDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+		elif self.distributional:
+			self.support = torch.linspace(self.v_interval[0], self.v_interval[1], self.num_atoms).to(self.device)
+			self.dqn = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
+			self.dqn_target = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 		else:
 			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
@@ -326,22 +337,64 @@ class MultiAgentDuelingDQNAgent:
 		device = self.device  # for shortening the following lines
 		state = torch.FloatTensor(samples["obs"]).to(device)
 		next_state = torch.FloatTensor(samples["next_obs"]).to(device)
-		action = torch.LongTensor(samples["acts"].reshape(-1, 1)).to(device)
+		action = torch.LongTensor(samples["acts"]).to(device)
 		reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
 		done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
 
 		# G_t   = r + gamma * v(s_{t+1})  if state != Terminal
 		#       = r                       otherwise
 
-		curr_q_value = self.dqn(state).gather(1, action)
-		done_mask = 1 - done
+		if not self.distributional:
 
-		with torch.no_grad():
-			next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
-			target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
+			action = action.reshape(-1, 1)
+			curr_q_value = self.dqn(state).gather(1, action)
+			done_mask = 1 - done
 
-		# calculate element-wise dqn loss
-		elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
+			with torch.no_grad():
+				next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
+				target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
+
+			# calculate element-wise dqn loss
+			elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
+
+		else:
+			# Distributional Q-Learning - Here is where the fun begins #
+			delta_z = float(self.v_interval[1] - self.v_interval[0]) / (self.num_atoms - 1)
+
+			with torch.no_grad():
+
+				# max_a = argmax_a' Q'(s',a')
+				next_action = self.dqn_target(next_state).argmax(1)
+				# V'(s', max_a)
+				next_dist = self.dqn_target.dist(next_state)
+				next_dist = next_dist[range(self.batch_size), next_action]
+
+				# Compute the target distribution by adding the
+				t_z = reward + (1 - done) * self.gamma * self.support
+				t_z = t_z.clamp(min=self.v_interval[0], max=self.v_interval[1])
+				b = (t_z - self.v_interval[0]) / delta_z
+				lower_bound = b.floor().long()
+				upper_bound = b.ceil().long()
+
+				offset = (torch.linspace(0, (self.batch_size - 1) * self.num_atoms, self.batch_size
+					).long()
+					.unsqueeze(1)
+					.expand(self.batch_size, self.num_atoms)
+					.to(self.device)
+				)
+
+				proj_dist = torch.zeros(next_dist.size(), device=self.device)
+				proj_dist.view(-1).index_add_(
+					0, (lower_bound + offset).view(-1), (next_dist * (upper_bound.float() - b)).view(-1)
+				)
+				proj_dist.view(-1).index_add_(
+					0, (upper_bound + offset).view(-1), (next_dist * (b - lower_bound.float())).view(-1)
+				)
+
+			dist = self.dqn.dist(state)
+			log_p = torch.log(dist[range(self.batch_size), action])
+
+			elementwise_loss = -(proj_dist * log_p).sum(1)
 
 		return elementwise_loss
 
