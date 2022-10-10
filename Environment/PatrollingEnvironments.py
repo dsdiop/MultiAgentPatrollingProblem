@@ -364,28 +364,30 @@ class MultiAgentPatrolling(gym.Env):
 		# Reset the ground truth #
 		self.gt.reset()
 		self.importance_matrix = self.gt.read()
-		# Reset the fleet
 
+		# Get the N random initial positions #
 		if self.random_inititial_positions:
-			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents,
-			                                         replace=False)
+			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents, replace=False)
 			self.initial_positions = self.visitable_locations[random_positions_indx]
 
+		# Reset the positions of the fleet #
 		self.fleet.reset(initial_positions=self.initial_positions)
 
 		# New idleness mask (1-> high idleness, 0-> just visited)
 		self.idleness_matrix = 1 - np.copy(self.fleet.collective_mask)
 
-		# New obstacles #
+		# Randomly generated obstacles #
 		if self.obstacles:
+			# Generate a inside obstacles map #
 			self.inside_obstacles_map = np.zeros_like(self.scenario_map)
 			obstacles_pos_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
-			self.inside_obstacles_map[
-				self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
-			# Update obstacles #
+			self.inside_obstacles_map[self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
+
+			# Update the obstacle map for every agent #
 			for i in range(self.number_of_agents):
 				self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
 
+		# Update the state of the agents #
 		self.update_state()
 
 		return self.state
@@ -493,7 +495,6 @@ class MultiAgentPatrolling(gym.Env):
 			state[np.delete(np.arange(3, 3 + self.number_of_agents), agent_num), :, :], axis=0)
 
 		return np.concatenate((common_states, other_agents_positions_state[np.newaxis]), axis=0)
-
 
 	def reward_function(self, collision_mask, actions):
 		""" Reward function:
