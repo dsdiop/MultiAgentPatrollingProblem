@@ -285,7 +285,6 @@ class DistributedFleet:
 			# Update the idleness #
 			self.agents[agent_id].update_idleness()
 
-		self.
 
 		return np.asarray(relative_interest_sum), np.asarray(collisions)
 
