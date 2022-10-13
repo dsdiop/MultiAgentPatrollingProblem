@@ -2,12 +2,13 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
+from sklearn.neighbors import KNeighborsRegressor
 
 class DistributedVehicle:
 	default_config_dict = {
 		"navigation_map": np.ones((50, 50)),
 		"distance_budget": 100,
-		"radius": 3,
+		"radius": 2,
 		"forget_factor": 0.01,
 		"ground_truth": np.random.rand(50, 50),
 		"initial_position": np.array([10, 20]),
@@ -36,6 +37,7 @@ class DistributedVehicle:
 		self.fleet_positional_map = np.zeros_like(self.navigation_map)
 		self.redundancy_matrix = np.zeros_like(self.navigation_map)
 		self.visitable_positions = np.column_stack(np.where(self.navigation_map == 1.0))
+		self.change_in_information = 0.0
 
 		# Vahicle values #
 		self.distance = 0
@@ -125,10 +127,13 @@ class DistributedVehicle:
 			[external_information[i]["precision_matrix"] for i in external_information.keys()])
 
 		# Update the information matrix by agreement #
-		sum_precision_matrix = np.sum(
-			[external_information[i]["redundancy_matrix"] for i in external_information.keys()], axis=0)
 		sum_information_matrix = np.max(
 			[external_information[i]["information_matrix"] for i in external_information.keys()], axis=0)
+
+		# Register the information change for reward # 
+		self.change_in_information = np.sum(np.abs(self.information_matrix - sum_information_matrix))
+
+		# Update the change in information #
 		self.information_matrix = sum_information_matrix
 
 		# Update the idleness matrix by minimum value #
@@ -207,6 +212,7 @@ class DistributedVehicle:
 
 
 class DistributedFleet:
+
 	default_config_dict = {
 		"vehicle_config": DistributedVehicle.default_config_dict,
 		"navigation_map": np.ones((50, 50)),
@@ -233,6 +239,8 @@ class DistributedFleet:
 		self.valid_positions = np.column_stack(np.where(self.navigation_map == 1))
 		self.max_connection_distance = default_config["max_connection_distance"]
 		self.connectivity_enabled = default_config["connectivity_enabled"]
+
+		self.knn = KNeighborsRegressor(5, weights='distance')
 
 		self.fig = None
 
@@ -276,6 +284,8 @@ class DistributedFleet:
 		for agent_id in actions.keys():
 			# Update the idleness #
 			self.agents[agent_id].update_idleness()
+
+		self.
 
 		return np.asarray(relative_interest_sum), np.asarray(collisions)
 
@@ -342,12 +352,14 @@ class DistributedFleet:
 
 
 class DistributedDiscretePatrollingEnv(gym.Env):
+
 	default_config_dict = {
 		"distance_budget": 100,
 		"ground_truth_generator": None,
 		"max_collisions": 10,
 		"collision_penalization": -1.0,
-		"fleet_configuration": DistributedFleet.default_config_dict
+		"fleet_configuration": DistributedFleet.default_config_dict,
+		"reward_new_information": None
 	}
 
 	def __init__(self, config_dict: dict):
@@ -357,13 +369,10 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.gt = config_dict["ground_truth_generator"]
 		self.max_collisions = config_dict["max_collisions"]
 		self.collision_penalization = config_dict["collision_penalization"]
+		self.reward_new_information = config_dict["reward_new_information"]
 		self.state = None
 
-	def reset(self,
-			  seed=None,
-			  return_info=False,
-			  options=None):
-		super().reset(seed=seed, return_info=return_info, options=options)
+	def reset(self):
 
 		# Reset the ground truth
 		self.gt.reset()
@@ -375,6 +384,18 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		# Generate new state
 		self.state = self.process_state()
 
+	def reward_function(self, relative_interest_sum, collisions, new_information_quantity = None):
+		""" Compute the reward function """
+
+		rewards = relative_interest_sum.copy()
+
+		if new_information_quantity is not None:
+			rewards += new_information_quantity * self.reward_for_new_information
+
+		rewards[np.where(collisions)] = self.collision_penalization
+
+		return {i: rewards[i] for i in range(len(rewards))}
+
 	def step(self, actions: dict):
 		""" Process one step of the environment """
 
@@ -382,9 +403,11 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		relative_interest_sum, collisions = self.fleet.step(actions)
 
 		# Compute reward #
-		rewards = relative_interest_sum
-		rewards[np.where(collisions)] = self.collision_penalization
-		rewards = {i: rewards[i] for i in range(len(rewards))}
+		if self.reward_new_information is None:
+			rewards = self.reward_function(relative_interest_sum, collisions)
+		else:			
+			# Add the shared information gain to the reward if specified 
+			rewards = self.reward_function(relative_interest_sum, collisions, [agent.change_in_information for agent in self.fleet.agents])
 
 		# Accumulate collisions
 		self.number_of_collisions += np.sum(collisions)
@@ -429,7 +452,7 @@ if __name__ == '__main__':
 	from groundtruthgenerator import GroundTruth
 	import time
 
-	nav_map = np.genfromtxt('./example_map.csv', delimiter=',')
+	nav_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
 	gt = GroundTruth(nav_map, max_number_of_peaks=6)
 
 	fleet_config_dict = DistributedFleet.default_config_dict
@@ -441,23 +464,28 @@ if __name__ == '__main__':
 	env_config = DistributedDiscretePatrollingEnv.default_config_dict
 	env_config["distance_budget"] = 10000
 	env_config["ground_truth_generator"] = gt
+	env_config["reward_for_new_information"] = 1.0
 	env_config["max_collisions"] = 1000
 
 	env = DistributedDiscretePatrollingEnv(env_config)
 	env.reset()
-	# env.render()
-
+	env.reset()
+	env.render()
 	dones = {0: False}
 
 	time0 = time.time()
 	times = []
 
 	while not all(dones.values()):
+
 		actions = {i: np.random.randint(0, 8) for i in range(env.fleet.number_of_agents)}
 		_, reward, dones, _ = env.step(actions)
-		print(reward)
+		print("Reward:", reward)
+		print("Shared reward:", [agent.change_in_information for agent in env.fleet.agents])
+
 		times.append(time.time() - time0)
 		time0 = time.time()
+		env.render()
 
 	print(np.mean(times))
 
