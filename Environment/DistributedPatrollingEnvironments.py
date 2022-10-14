@@ -5,24 +5,12 @@ from scipy.spatial import distance_matrix
 from sklearn.neighbors import KNeighborsRegressor
 
 class DistributedVehicle:
-	default_config_dict = {
-		"navigation_map": np.ones((50, 50)),
-		"distance_budget": 100,
-		"radius": 2,
-		"forget_factor": 0.01,
-		"ground_truth": np.random.rand(50, 50),
-		"initial_position": np.array([10, 20]),
-		"movement_length": 3,
-
-	}
 
 	def __init__(self, agent_id, default_config: dict):
 		# Unpack config values #
 		self.navigation_map = default_config["navigation_map"]
-		self.distance_budget = default_config["distance_budget"]
 		self.detection_radius = default_config["radius"]
 		self.forget_factor = default_config["forget_factor"]
-		self.ground_truth_field = default_config["ground_truth"]
 		self.initial_position = default_config["initial_position"]
 		self.movement_length = default_config["movement_length"]
 		self.agent_id = agent_id
@@ -213,17 +201,6 @@ class DistributedVehicle:
 
 class DistributedFleet:
 
-	default_config_dict = {
-		"vehicle_config": DistributedVehicle.default_config_dict,
-		"navigation_map": np.ones((50, 50)),
-		"random_initial_positions": True,
-		"initial_positions": np.zeros((1, 2)),
-		"number_of_agents": 1,
-		"max_connection_distance": 5,
-		"ground_truth": None,
-		"connectivity_enabled": True
-	}
-
 	def __init__(self, default_config):
 
 		agent_config = default_config["vehicle_config"]
@@ -233,9 +210,8 @@ class DistributedFleet:
 		self.initial_positions = default_config["number_of_agents"]
 		self.random_initial_positions = default_config["random_initial_positions"]
 		self.navigation_map = default_config["navigation_map"]
-		self.ground_truth = default_config["ground_truth"]
-		self.agents = [DistributedVehicle(agent_id=i, default_config=agent_config) for i in
-					   range(self.number_of_agents)]
+		self.ground_truth = None
+		self.agents = [DistributedVehicle(agent_id=i, default_config=agent_config) for i in range(self.number_of_agents)]
 		self.valid_positions = np.column_stack(np.where(self.navigation_map == 1))
 		self.max_connection_distance = default_config["max_connection_distance"]
 		self.connectivity_enabled = default_config["connectivity_enabled"]
@@ -353,16 +329,37 @@ class DistributedFleet:
 class DistributedDiscretePatrollingEnv(gym.Env):
 
 	default_config_dict = {
-		"distance_budget": 100,
+
+		"fleet_configuration": {
+
+			"vehicle_config": {
+
+				"radius": 2,
+				"forget_factor": 0.02,
+				"initial_position": np.array([10, 20]),
+				"movement_length": 3,
+			},
+
+			"navigation_map": None,
+			"random_initial_positions": True,
+			"initial_positions": np.zeros((1, 2)),
+			"number_of_agents": 4,
+			"max_connection_distance": 5,
+			"connectivity_enabled": True,
+		},
+
 		"ground_truth_generator": None,
 		"max_collisions": 10,
 		"collision_penalization": -1.0,
-		"fleet_configuration": DistributedFleet.default_config_dict,
-		"reward_new_information": None
+		"reward_new_information": None,
+		"distance_budget": 100,
+
 	}
 
 	def __init__(self, config_dict: dict):
+
 		self.fleet = DistributedFleet(config_dict["fleet_configuration"])
+		self.navigation_map = config_dict["fleet_configuration"]["navigation_map"]
 		self.distance_budget = config_dict["distance_budget"]
 		self.number_of_collisions = 0
 		self.gt = config_dict["ground_truth_generator"]
@@ -370,6 +367,11 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.collision_penalization = config_dict["collision_penalization"]
 		self.reward_new_information = config_dict["reward_new_information"]
 		self.state = None
+
+		self.action_space = gym.spaces.Discrete(8)
+		self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.navigation_map.shape), dtype=np.float32)
+		self.individual_action_state = gym.spaces.Discrete(8)
+
 
 	def reset(self):
 
@@ -454,22 +456,39 @@ if __name__ == '__main__':
 	nav_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
 	gt = GroundTruth(nav_map, max_number_of_peaks=6)
 
-	fleet_config_dict = DistributedFleet.default_config_dict
-	fleet_config_dict["navigation_map"] = nav_map
-	fleet_config_dict["number_of_agents"] = 3
-	fleet_config_dict["max_connection_distance"] = 10
-	fleet_config_dict["ground_truth"] = np.random.rand(*nav_map.shape)
 
-	env_config = DistributedDiscretePatrollingEnv.default_config_dict
-	env_config["distance_budget"] = 10000
-	env_config["ground_truth_generator"] = gt
-	env_config["reward_for_new_information"] = 1.0
-	env_config["max_collisions"] = 1000
+	env_config = {
+
+		"fleet_configuration": {
+
+			"vehicle_config": {
+				
+				"radius": 2,
+				"forget_factor": 0.02,
+				"initial_position": np.array([10, 20]),
+				"movement_length": 3,
+			},
+
+			"navigation_map": nav_map,
+			"random_initial_positions": True,
+			"initial_positions": np.zeros((1, 2)),
+			"number_of_agents": 4,
+			"max_connection_distance": 5,
+			"connectivity_enabled": True,
+		},
+
+		"ground_truth_generator": gt,
+		"max_collisions": 10,
+		"collision_penalization": -1.0,
+		"reward_new_information": None,
+		"distance_budget": 150,
+
+	}
 
 	env = DistributedDiscretePatrollingEnv(env_config)
 	env.reset()
-	env.reset()
 	env.render()
+
 	dones = {0: False}
 
 	time0 = time.time()
