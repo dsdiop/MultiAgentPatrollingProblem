@@ -1,3 +1,7 @@
+import sys
+
+sys.path.append('.')
+
 from Environment.DistributedPatrollingEnvironments import DistributedDiscretePatrollingEnv
 import numpy as np
 from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
@@ -41,7 +45,7 @@ env_config = 	env_config = {
 env = DistributedDiscretePatrollingEnv(env_config)
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
-                                       memory_size=int(1E6),
+                                       memory_size=int(1E3),
                                        batch_size=64,
                                        target_update=1000,
                                        soft_update=False,

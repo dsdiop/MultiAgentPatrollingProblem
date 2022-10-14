@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-
-from ..ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer
-from ..Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
+from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer
+from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
 import torch.nn.functional as F
+from tqdm import trange
 
 
 class MultiAgentDuelingDQNAgent:
@@ -135,7 +135,7 @@ class MultiAgentDuelingDQNAgent:
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
 
-	def individual_select_action(self, singular_state: np.ndarray, ind: int) -> np.ndarray:
+	def predict_action(self, state: np.ndarray):
 
 		"""Select an action from the input state. If deterministic, no noise is applied. """
 
@@ -143,21 +143,18 @@ class MultiAgentDuelingDQNAgent:
 			selected_action = self.env.action_space.sample()
 
 		else:
-			q_values = self.dqn(torch.FloatTensor(singular_state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
+			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
 			selected_action = np.argmax(q_values)
 
 		return selected_action
 
-	def select_action(self, state: np.ndarray):
+	def select_action(self, states: dict) -> dict:
 
-		selected_action = []
-		for i in range(self.env.number_of_agents):
-			individual_state = self.env.individual_agent_observation(state=state, agent_num=i)
-			selected_action.append(self.individual_select_action(individual_state, ind=i))
+		actions = {agent_id: self.predict_action(state) for agent_id, state in states.items()}
 
-		return np.asarray(selected_action)
+		return actions
 
-	def step(self, action: np.ndarray) -> Tuple[np.ndarray, np.float64, bool]:
+	def step(self, action: dict) -> Tuple[np.ndarray, np.float64, bool]:
 		"""Take an action and return the response of the env."""
 
 		next_state, reward, done, _ = self.env.step(action)
@@ -231,9 +228,9 @@ class MultiAgentDuelingDQNAgent:
 		episodic_reward_vector = []
 		record = -np.inf
 
-		for episode in range(1, int(episodes) + 1):
+		for episode in trange(1, int(episodes) + 1):
 
-			done = False
+			done = {i:False for i in range(self.env.number_of_agents)}
 			state = self.env.reset()
 			score = 0
 			length = 0
@@ -255,25 +252,26 @@ class MultiAgentDuelingDQNAgent:
 			                                   e_fin=self.epsilon_values[1])
 
 			# Run an episode #
-			while not done:
+			while not all(done.values()):
 
 				# Inrease the played steps #
 				steps += 1
 
 				# Select the action using the current policy
-				action = self.select_action(state)
+				actions = self.select_action(state)
+				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
 
-				# Process the agent step
-				next_state, reward, done = self.step(action)
+				# Process the agent step #
+				next_state, reward, done = self.step(actions)
 
-				for j in range(self.env.number_of_agents):
+				for agent_id in next_state.keys():
 
 				# Store every observation for every agent
-					self.transition = [self.env.individual_agent_observation(state=state, agent_num=j),
-					                   action[j],
-					                   reward[j],
-					                   self.env.individual_agent_observation(state=next_state, agent_num=j),
-					                   done,
+					self.transition = [state[agent_id],
+					                   actions[agent_id],
+					                   reward[agent_id],
+					                   next_state[agent_id],
+					                   done[agent_id],
 					                   {}]
 
 					self.memory.store(*self.transition)
@@ -281,11 +279,11 @@ class MultiAgentDuelingDQNAgent:
 				# Update the state
 				state = next_state
 				# Accumulate indicators
-				score += np.mean(reward)  # The mean reward among the agents
+				score += np.mean(list(reward.values()))  # The mean reward among the agents
 				length += 1
 
 				# if episode ends
-				if done:
+				if all(done.values()):
 
 					# Append loss metric #
 					if losses:
@@ -418,7 +416,6 @@ class MultiAgentDuelingDQNAgent:
 
 		self.writer.add_scalar('train/accumulated_reward', self.episodic_reward, self.episode)
 		self.writer.add_scalar('train/accumulated_length', self.episodic_length, self.episode)
-		self.writer.add_scalar('train/number_of_collisions', self.env.fleet.fleet_collisions, self.episode)
 
 		self.writer.flush()
 

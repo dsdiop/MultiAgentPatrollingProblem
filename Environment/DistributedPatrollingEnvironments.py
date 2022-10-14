@@ -2,7 +2,6 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
-from sklearn.neighbors import KNeighborsRegressor
 
 class DistributedVehicle:
 
@@ -216,8 +215,6 @@ class DistributedFleet:
 		self.max_connection_distance = default_config["max_connection_distance"]
 		self.connectivity_enabled = default_config["connectivity_enabled"]
 
-		self.knn = KNeighborsRegressor(5, weights='distance')
-
 		self.fig = None
 
 	def reset(self):
@@ -370,6 +367,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 
 		self.action_space = gym.spaces.Discrete(8)
 		self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.navigation_map.shape), dtype=np.float32)
+		self.number_of_agents = self.navigation_map = config_dict["fleet_configuration"]["number_of_agents"]
 		self.individual_action_state = gym.spaces.Discrete(8)
 
 
@@ -384,6 +382,8 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.number_of_collisions = 0
 		# Generate new state
 		self.state = self.process_state()
+
+		return self.state
 
 	def reward_function(self, relative_interest_sum, collisions, new_information_quantity = None):
 		""" Compute the reward function """
