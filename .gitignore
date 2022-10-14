@@ -1,2 +1,5 @@
 /runs
 *.pyc
+*.pth
+OtherAlgorithms/
+*.0Experiment
