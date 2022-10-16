@@ -45,19 +45,24 @@ env_config = 	env_config = {
 env = DistributedDiscretePatrollingEnv(env_config)
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
-                                       memory_size=int(1E3),
+                                       memory_size=int(1E6),
                                        batch_size=64,
                                        target_update=1000,
                                        soft_update=False,
                                        tau=0.0001,
-                                       epsilon_values=[1.0, 0.1],
-                                       epsilon_interval=[0.0, 0.33],
+                                       epsilon_values=[1.0, 0.05],
+                                       epsilon_interval=[0.0, 0.5],
                                        learning_starts=0,
                                        gamma=0.99,
                                        lr=1e-4,
                                        noisy=False,
-                                       train_every=10,
+                                       train_every=5,
                                        save_every=5000,
-                                       distributional=False)
+                                       distributional=True,
+                                       num_atoms=51,
+                                       v_interval=(-1, 900),
+                                       logdir="./runs/Distributional",
+                                       log_name="Distributional"
+                                       )
 
 multiagent.train(episodes=100000)
