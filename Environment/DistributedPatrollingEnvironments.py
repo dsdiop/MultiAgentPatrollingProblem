@@ -250,9 +250,9 @@ class DistributedFleet:
 
 		# Compute the sum of relative interest collected #
 		for agent_id in actions.keys():
-			relative_interest_matrix = self.agents[agent_id].information_matrix * (1.0 - self.agents[agent_id].idleness_matrix)
+			relative_interest_matrix = self.agents[agent_id].information_matrix * self.agents[agent_id].idleness_matrix
 			relative_interest_values = relative_interest_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)] / self.agents[agent_id].redundancy_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)]
-			relative_interest_sum.append(relative_interest_values.sum() / (self.agents[agent_id].detection_radius))
+			relative_interest_sum.append(relative_interest_values.sum() / (np.pi*self.agents[agent_id].detection_radius**2))
 
 		for agent_id in actions.keys():
 			# Update the idleness #
@@ -285,7 +285,7 @@ class DistributedFleet:
 
 		self.fig.canvas.draw()
 		plt.draw()
-		plt.pause(0.1)
+		plt.pause(2)
 
 	def get_connectivity_matrix(self):
 		""" Obtain the adjacency matrix of the fleet and compute the complete connectivity matrix """
@@ -478,7 +478,7 @@ if __name__ == '__main__':
 		},
 
 		"ground_truth_generator": gt,
-		"max_collisions": 10,
+		"max_collisions": 10000,
 		"collision_penalization": -1.0,
 		"reward_new_information": None,
 		"distance_budget": 150,
