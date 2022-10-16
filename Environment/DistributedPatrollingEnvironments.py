@@ -61,10 +61,6 @@ class DistributedVehicle:
 		# Update the model
 		self.update_model()
 
-		# Generate state #
-		self.state = self.process_state()
-
-		return self.state
 
 	def compute_detection_mask(self):
 
@@ -165,22 +161,20 @@ class DistributedVehicle:
 		else:
 			return False
 
-	def process_state(self):
+	def get_valid_mask(self):
 
-		state = np.zeros((5, *self.navigation_map.shape))
+		# Compute the next attempted position #
+		mask = []
+		for action in range(8):
+			angle = 2 * np.pi / 8.0 * action
+			movement = np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])
+			next_position = self.position + movement
+			if not self.check_collision(next_position=next_position):
+				mask.append(True)
+			else:
+				mask.append(False)
 
-		# State 0 ->  Obstacles map #
-		state[0] = self.navigation_map
-		# State 1 -> Temporal mask
-		state[1] = self.idleness_matrix
-		# State 2 -> Known information
-		state[2] = self.information_matrix
-		# State 3 -> Self position
-		state[3][int(self.position[0]), int(self.position[1])] = 1.0
-		# State 4 -> Other positions
-		state[4] = self.fleet_positional_map
-
-		return state
+		return np.array(mask)
 
 	def render(self):
 
@@ -261,32 +255,6 @@ class DistributedFleet:
 
 		return np.asarray(relative_interest_sum), np.asarray(collisions)
 
-	def render(self):
-
-		if self.fig is None:
-			self.d = []
-			self.fig, self.axs = plt.subplots(self.number_of_agents, 5)
-
-			for i, agent in enumerate(self.agents):
-				self.d.append(self.axs[i, 0].imshow(agent.navigation_map, cmap='gray', vmin=0, vmax=1))
-				self.d.append(self.axs[i, 1].imshow(agent.information_matrix, cmap='jet', vmin=0, vmax=1))
-				self.d.append(self.axs[i, 2].imshow(agent.redundancy_matrix, cmap='jet', vmin=0, vmax=1))
-				self.d.append(self.axs[i, 3].imshow(agent.idleness_matrix, cmap='plasma', vmin=0, vmax=1))
-				self.d.append(self.axs[i, 4].imshow(agent.precision_matrix, cmap='gray', vmin=0, vmax=1))
-
-		else:
-
-			for i, agent in enumerate(self.agents):
-				self.d[i * 5 + i].set_data(agent.navigation_map)
-				self.d[i * 5 + 1].set_data(agent.information_matrix)
-				self.d[i * 5 + 2].set_data(agent.redundancy_matrix)
-				self.d[i * 5 + 3].set_data(agent.idleness_matrix)
-				self.d[i * 5 + 4].set_data(agent.precision_matrix)
-
-		self.fig.canvas.draw()
-		plt.draw()
-		plt.pause(2)
-
 	def get_connectivity_matrix(self):
 		""" Obtain the adjacency matrix of the fleet and compute the complete connectivity matrix """
 
@@ -321,6 +289,20 @@ class DistributedFleet:
 									for agent_id in agents_ids if connectivity_row[agent_id]}
 
 			self.agents[agent_id].fuse_model_information(new_information_dict)
+
+	def get_safe_actions(self):
+		""" Obtain a dictionary with random safe actions to follow """
+
+		safe_actions = {}
+		for agent_id, agent in enumerate(self.agents):
+			valid_mask = agent.get_valid_mask().astype(int)
+			safe_actions[agent_id] = np.random.choice(np.arange(8), p=valid_mask/np.sum(valid_mask))
+
+		return safe_actions
+
+	
+
+
 
 
 class DistributedDiscretePatrollingEnv(gym.Env):
@@ -364,6 +346,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.collision_penalization = config_dict["collision_penalization"]
 		self.reward_new_information = config_dict["reward_new_information"]
 		self.state = None
+		self.fig = None
 
 		self.action_space = gym.spaces.Discrete(8)
 		self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(5, *self.navigation_map.shape), dtype=np.float32)
@@ -437,7 +420,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		others_position_map = np.zeros_like(agent.navigation_map)
 		others_positions = np.asarray([agent.fleet_position_observation[agent_id] for agent_id in agent.fleet_position_observation.keys() if agent_id != agent.agent_id]).astype(int)
 		if len(others_positions) > 0:
-			position_map[others_positions[:, 0], others_positions[:, 1]] = 1.0
+			others_position_map[others_positions[:, 0], others_positions[:, 1]] = 1.0
 
 		return np.concatenate((agent.navigation_map[np.newaxis],
 							   position_map[np.newaxis],
@@ -446,7 +429,34 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 							   agent.idleness_matrix[np.newaxis]), axis=0)
 
 	def render(self, mode="human"):
-		self.fleet.render()
+
+		if self.fig is None:
+			self.d = []
+			self.fig, self.axs = plt.subplots(self.number_of_agents, 5)
+
+			for i, agent in enumerate(self.fleet.agents):
+
+				state = self.process_individual_obs(agent)
+				self.d.append(self.axs[i, 0].imshow(state[0], cmap='gray', vmin=0, vmax=1))
+				self.d.append(self.axs[i, 1].imshow(state[1], cmap='gray', vmin=0, vmax=1))
+				self.d.append(self.axs[i, 2].imshow(state[2], cmap='gray', vmin=0, vmax=1))
+				self.d.append(self.axs[i, 3].imshow(state[3], cmap='jet', vmin=0, vmax=1))
+				self.d.append(self.axs[i, 4].imshow(state[4], cmap='plasma', vmin=0, vmax=1))
+
+		else:
+			
+			for i, agent in enumerate(self.fleet.agents):
+
+				state = self.process_individual_obs(agent)
+				self.d[i * 5 + i].set_data(state[0])
+				self.d[i * 5 + 1].set_data(state[1])
+				self.d[i * 5 + 2].set_data(state[2])
+				self.d[i * 5 + 3].set_data(state[3])
+				self.d[i * 5 + 4].set_data(state[4])
+
+		self.fig.canvas.draw()
+		plt.draw()
+		plt.pause(0.1)
 
 
 if __name__ == '__main__':
@@ -473,7 +483,7 @@ if __name__ == '__main__':
 			"random_initial_positions": True,
 			"initial_positions": np.zeros((1, 2)),
 			"number_of_agents": 4,
-			"max_connection_distance": 5,
+			"max_connection_distance": 1000,
 			"connectivity_enabled": True,
 		},
 
@@ -489,15 +499,23 @@ if __name__ == '__main__':
 	env.reset()
 	env.render()
 
-	dones = {0: False}
+	dones = {i: False for i in range(4)}
 
 	time0 = time.time()
 	times = []
+	
+	actions = env.fleet.get_safe_actions()  # Get safe actions
 
 	while not all(dones.values()):
-
-		actions = {i: np.random.randint(0, 8) for i in range(env.fleet.number_of_agents)}
+		
+		actions = {i:action for i, action in actions.items() if not dones[i]}
 		_, reward, dones, _ = env.step(actions)
+
+		for agent_id, action in actions.items():
+			if not env.fleet.agents[agent_id].get_valid_mask()[action]:
+				actions[agent_id] = env.fleet.get_safe_actions()[agent_id]
+
+
 		print("Reward:", reward)
 		print("Shared reward:", [agent.change_in_information for agent in env.fleet.agents])
 
