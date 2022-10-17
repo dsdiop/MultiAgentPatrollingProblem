@@ -200,7 +200,7 @@ class DistributedFleet:
 		agent_config["navigation_map"] = default_config["navigation_map"]
 
 		self.number_of_agents = default_config["number_of_agents"]
-		self.initial_positions = default_config["number_of_agents"]
+		self.initial_positions = default_config["initial_positions"]
 		self.random_initial_positions = default_config["random_initial_positions"]
 		self.navigation_map = default_config["navigation_map"]
 		self.ground_truth = None
@@ -245,7 +245,7 @@ class DistributedFleet:
 		# Compute the sum of relative interest collected #
 		for agent_id in actions.keys():
 			relative_interest_matrix = self.agents[agent_id].information_matrix * self.agents[agent_id].idleness_matrix
-			relative_interest_values = relative_interest_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)] / self.agents[agent_id].redundancy_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)]
+			relative_interest_values = relative_interest_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)] / self.agents[agent_id].redundancy_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)**2]
 			relative_interest_sum.append(relative_interest_values.sum() / (np.pi*self.agents[agent_id].detection_radius**2))
 
 		for agent_id in actions.keys():
@@ -320,10 +320,10 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 			},
 
 			"navigation_map": None,
-			"random_initial_positions": True,
-			"initial_positions": np.zeros((1, 2)),
+			"random_initial_positions": False,
+			"initial_positions": np.array([[30, 20], [32, 20], [34, 20], [30, 22]]),
 			"number_of_agents": 4,
-			"max_connection_distance": 5,
+			"max_connection_distance": 5000,
 			"connectivity_enabled": True,
 		},
 
@@ -409,8 +409,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		""" Create a batch of observations of the agents """
 		return {agent.agent_id: self.process_individual_obs(agent) for agent in self.fleet.agents}
 
-	@staticmethod
-	def process_individual_obs(agent: DistributedVehicle):
+	def process_individual_obs(self, agent: DistributedVehicle):
 		""" Gather the matrices of the agent to conform a state """
 
 		position_map = np.zeros_like(agent.navigation_map)
@@ -424,7 +423,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 
 		return np.concatenate((agent.navigation_map[np.newaxis],
 							   position_map[np.newaxis],
-							   others_position_map[np.newaxis],
+							   agent.redundancy_matrix[np.newaxis]/self.number_of_agents,
 							   agent.information_matrix[np.newaxis],
 							   agent.idleness_matrix[np.newaxis]), axis=0)
 
@@ -480,10 +479,10 @@ if __name__ == '__main__':
 			},
 
 			"navigation_map": nav_map,
-			"random_initial_positions": True,
-			"initial_positions": np.zeros((1, 2)),
+			"random_initial_positions": False,
+			"initial_positions": np.asarray([[24, 21],[28,24],[27,19],[24,24]]),
 			"number_of_agents": 4,
-			"max_connection_distance": 1000,
+			"max_connection_distance": 5000,
 			"connectivity_enabled": True,
 		},
 
@@ -504,7 +503,7 @@ if __name__ == '__main__':
 	time0 = time.time()
 	times = []
 	
-	actions = env.fleet.get_safe_actions()  # Get safe actions
+	actions = {i: 0 for i in range(4)}  # Get safe actions
 
 	while not all(dones.values()):
 		
