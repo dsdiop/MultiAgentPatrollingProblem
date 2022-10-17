@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
+import itertools
 
 class DistributedVehicle:
 
@@ -62,11 +63,14 @@ class DistributedVehicle:
 		self.update_model()
 
 
-	def compute_detection_mask(self):
+	def compute_detection_mask(self, position = None):
 
 		known_mask = np.zeros_like(self.navigation_map)
 
-		px, py = self.position.astype(int)
+		if position is None:
+			px, py = self.position.astype(int)
+		else:
+			px, py = position.astype(int)
 
 		# State - coverage area #
 		x = np.arange(0, self.navigation_map.shape[0])
@@ -235,7 +239,7 @@ class DistributedFleet:
 		for agent_id, action in actions.items():
 			# Process the movement #
 			collisions.append(self.agents[agent_id].move(action))
-			# Process the measurements #
+			# Process the measurements #  
 			self.agents[agent_id].update_model()
 
 		# If the connectivity is enabled forward common information #
@@ -244,13 +248,15 @@ class DistributedFleet:
 
 		# Compute the sum of relative interest collected #
 		for agent_id in actions.keys():
-			relative_interest_matrix = self.agents[agent_id].information_matrix * self.agents[agent_id].idleness_matrix
-			relative_interest_values = relative_interest_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)] / self.agents[agent_id].redundancy_matrix[np.where(self.agents[agent_id].redundancy_matrix != 0)**2]
+			relative_interest_matrix = self.ground_truth * self.agents[agent_id].idleness_matrix * self.agents[agent_id].detection_mask
+			relative_interest_values = relative_interest_matrix / np.clip(self.agents[agent_id].redundancy_matrix, 1.0, 9999.0)
 			relative_interest_sum.append(relative_interest_values.sum() / (np.pi*self.agents[agent_id].detection_radius**2))
 
 		for agent_id in actions.keys():
 			# Update the idleness #
 			self.agents[agent_id].update_idleness()
+			# TODO: Implement a method to reupdate the idleness sepparatelly to avoid this call
+			self.update_distributed_models()
 
 
 		return np.asarray(relative_interest_sum), np.asarray(collisions)
@@ -299,10 +305,6 @@ class DistributedFleet:
 			safe_actions[agent_id] = np.random.choice(np.arange(8), p=valid_mask/np.sum(valid_mask))
 
 		return safe_actions
-
-	
-
-
 
 
 class DistributedDiscretePatrollingEnv(gym.Env):
@@ -405,6 +407,7 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 
 		return self.state, rewards, dones, {"collisions": self.number_of_collisions}
 
+
 	def process_state(self):
 		""" Create a batch of observations of the agents """
 		return {agent.agent_id: self.process_individual_obs(agent) for agent in self.fleet.agents}
@@ -480,7 +483,7 @@ if __name__ == '__main__':
 
 			"navigation_map": nav_map,
 			"random_initial_positions": False,
-			"initial_positions": np.asarray([[24, 21],[28,24],[27,19],[24,24]]),
+			"initial_positions": np.asarray([[21, 24],[22,24],[23,24],[24,24]]),
 			"number_of_agents": 4,
 			"max_connection_distance": 5000,
 			"connectivity_enabled": True,
@@ -516,7 +519,6 @@ if __name__ == '__main__':
 
 
 		print("Reward:", reward)
-		print("Shared reward:", [agent.change_in_information for agent in env.fleet.agents])
 
 		times.append(time.time() - time0)
 		time0 = time.time()
