@@ -81,6 +81,8 @@ class DistributedVehicle:
 
 		known_mask[mask.T] = 1.0
 
+		# known_mask[px-self.detection_radius : px+self.detection_radius+1, py-self.detection_radius : py+self.detection_radius+1] = 1.0
+
 		return known_mask
 
 	def update_model(self):
@@ -104,6 +106,10 @@ class DistributedVehicle:
 		self.idleness_matrix += self.forget_factor
 		self.idleness_matrix = self.idleness_matrix - self.detection_mask
 		self.idleness_matrix = np.clip(self.idleness_matrix, 0.0, 1.0) * self.navigation_map
+
+	def update_detection_mask(self):
+		""" Update the detection mask - analogous as taking a sample """
+		self.detection_mask = self.compute_detection_mask()
 
 	def fuse_model_information(self, external_information: dict):
 
@@ -228,7 +234,13 @@ class DistributedFleet:
 			agent.reset(new_positions[i], self.ground_truth)
 
 		# Forward the information between agents #
+		for agent in self.agents:
+			# Update the idleness #
+			agent.update_model()
+			agent.update_idleness()
+
 		self.update_distributed_models()
+
 
 	def step(self, actions: dict):
 		""" Move every agent and update their models """
@@ -239,10 +251,10 @@ class DistributedFleet:
 		for agent_id, action in actions.items():
 			# Process the movement #
 			collisions.append(self.agents[agent_id].move(action))
-			# Process the measurements #  
-			self.agents[agent_id].update_model()
+			# Update the detection mask #  
+			self.agents[agent_id].update_detection_mask()
 
-		# If the connectivity is enabled forward common information #
+		# Update the model if possible #
 		if self.connectivity_enabled:
 			self.update_distributed_models()
 
@@ -250,15 +262,14 @@ class DistributedFleet:
 		for agent_id in actions.keys():
 			relative_interest_matrix = self.ground_truth * self.agents[agent_id].idleness_matrix * self.agents[agent_id].detection_mask
 			relative_interest_values = relative_interest_matrix / np.clip(self.agents[agent_id].redundancy_matrix, 1.0, 9999.0)
-			relative_interest_sum.append(relative_interest_values.sum() / (np.pi*self.agents[agent_id].detection_radius**2))
+			relative_interest_sum.append(relative_interest_values.sum() / (self.agents[agent_id].detection_radius**2))
+		
+		for agent in self.agents:
+			agent.update_idleness()
+			agent.update_model()
 
-		for agent_id in actions.keys():
-			# Update the idleness #
-			self.agents[agent_id].update_idleness()
-			# TODO: Implement a method to reupdate the idleness sepparatelly to avoid this call
-			self.update_distributed_models()
-
-
+		self.update_distributed_models()
+			
 		return np.asarray(relative_interest_sum), np.asarray(collisions)
 
 	def get_connectivity_matrix(self):
@@ -276,7 +287,7 @@ class DistributedFleet:
 
 	def get_positions(self):
 
-		positions = np.array([agent.position for agent in self.agents])
+		return np.array([agent.position for agent in self.agents])
 
 	def update_distributed_models(self):
 		""" Update the distributed models of every agent using the information available in the network """
@@ -458,13 +469,15 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 
 		self.fig.canvas.draw()
 		plt.draw()
-		plt.pause(0.1)
+		plt.pause(0.01)
 
 
 if __name__ == '__main__':
 	from groundtruthgenerator import GroundTruth
 	import time
 
+
+	N = 2
 	nav_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
 	gt = GroundTruth(nav_map, max_number_of_peaks=6)
 
@@ -475,16 +488,16 @@ if __name__ == '__main__':
 
 			"vehicle_config": {
 				
-				"radius": 2,
+				"radius": 3,
 				"forget_factor": 0.02,
 				"initial_position": np.array([10, 20]),
-				"movement_length": 3,
+				"movement_length": 2,
 			},
 
 			"navigation_map": nav_map,
 			"random_initial_positions": False,
-			"initial_positions": np.asarray([[21, 24],[22,24],[23,24],[24,24]]),
-			"number_of_agents": 4,
+			"initial_positions": np.asarray([[30, 24],[25,24]]),
+			"number_of_agents": N,
 			"max_connection_distance": 5000,
 			"connectivity_enabled": True,
 		},
@@ -493,7 +506,7 @@ if __name__ == '__main__':
 		"max_collisions": 10000,
 		"collision_penalization": -1.0,
 		"reward_new_information": None,
-		"distance_budget": 150,
+		"distance_budget": 1500,
 
 	}
 
@@ -501,12 +514,12 @@ if __name__ == '__main__':
 	env.reset()
 	env.render()
 
-	dones = {i: False for i in range(4)}
+	dones = {i: False for i in range(N)}
 
 	time0 = time.time()
 	times = []
 	
-	actions = {i: 0 for i in range(4)}  # Get safe actions
+	actions = {i: 0 for i in range(N)}  # Get safe actions
 
 	while not all(dones.values()):
 		
