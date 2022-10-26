@@ -447,6 +447,8 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 			self.d = []
 			self.fig, self.axs = plt.subplots(self.number_of_agents, 5)
 
+			self.axs = np.atleast_2d(self.axs)
+
 			for i, agent in enumerate(self.fleet.agents):
 
 				state = self.process_individual_obs(agent)
