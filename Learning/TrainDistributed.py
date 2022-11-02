@@ -22,7 +22,7 @@ env_config = 	env_config = {
 				"radius": 2,
 				"forget_factor": 0.02,
 				"initial_position": np.array([10, 20]),
-				"movement_length": 3,
+				"movement_length": 2,
 			},
 
 			"navigation_map": sc_map,

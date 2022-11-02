@@ -2,7 +2,8 @@ import gym
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import distance_matrix
-import itertools
+from sklearn.neighbors import KNeighborsRegressor
+import copy
 
 class DistributedVehicle:
 
@@ -241,7 +242,6 @@ class DistributedFleet:
 
 		self.update_distributed_models()
 
-
 	def step(self, actions: dict):
 		""" Move every agent and update their models """
 
@@ -354,7 +354,9 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.navigation_map = config_dict["fleet_configuration"]["navigation_map"]
 		self.distance_budget = config_dict["distance_budget"]
 		self.number_of_collisions = 0
+
 		self.gt = config_dict["ground_truth_generator"]
+		
 		self.max_collisions = config_dict["max_collisions"]
 		self.collision_penalization = config_dict["collision_penalization"]
 		self.reward_new_information = config_dict["reward_new_information"]
@@ -372,6 +374,8 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		# Reset the ground truth
 		self.gt.reset()
 		self.fleet.ground_truth = self.gt.read()
+
+
 		# Reset the fleet state #
 		self.fleet.reset()
 		# Reset termination conditions #
@@ -538,6 +542,7 @@ if __name__ == '__main__':
 		times.append(time.time() - time0)
 		time0 = time.time()
 		env.render()
+
 
 	print(np.mean(times))
 

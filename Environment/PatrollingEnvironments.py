@@ -2,7 +2,7 @@ from abc import ABC
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
-from Environment.groundtruthgenerator import GroundTruth
+from groundtruthgenerator import GroundTruth
 from scipy.spatial import distance_matrix
 
 
@@ -461,8 +461,8 @@ class MultiAgentPatrolling(gym.Env):
 			self.fig, self.axs = plt.subplots(1, 5)
 
 			self.im0 = self.axs[0].imshow(self.state[0], cmap='gray')
-			self.im1 = self.axs[1].imshow(self.state[1], interpolation='bicubic', cmap='jet_r')
-			self.im2 = self.axs[2].imshow(self.state[2], interpolation='bicubic', cmap='coolwarm')
+			self.im1 = self.axs[1].imshow(self.state[1],  cmap='jet_r')
+			self.im2 = self.axs[2].imshow(self.state[2],  cmap='coolwarm')
 			self.im3 = self.axs[3].imshow(self.state[3], cmap='gray')
 			self.im4 = self.axs[4].imshow(
 				np.clip(np.sum(self.state[4:self.number_of_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1),
@@ -534,7 +534,7 @@ class MultiAgentPatrolling(gym.Env):
 
 if __name__ == '__main__':
 
-	sc_map = np.genfromtxt('example_map.csv', delimiter=',')
+	sc_map = np.genfromtxt('./Environment/example_map.csv', delimiter=',')
 
 	initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])
 
@@ -543,7 +543,7 @@ if __name__ == '__main__':
 	                           distance_budget=200,
 	                           number_of_vehicles=4,
 	                           seed=10,
-	                           detection_length=2,
+	                           detection_length=1,
 	                           movement_length=1,
 	                           max_collisions=5,
 	                           forget_factor=0.5,
@@ -567,7 +567,6 @@ if __name__ == '__main__':
 		print(r)
 		R.append(r)
 		env.individual_agent_observation(agent_num=0)
-		env.render()
 
 	R = np.asarray(R)
 	env.render()
