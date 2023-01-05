@@ -1,9 +1,11 @@
 
 import numpy as np
 from deap import benchmarks
+from collections import defaultdict
+from groundtruth import GroundTruth
 
 
-class GroundTruth(object):
+class Shekel(GroundTruth):
 
     """ Ground Truth generator class.
         It creates a ground truth within the specified navigation map.
@@ -11,17 +13,27 @@ class GroundTruth(object):
         and using a Shekel function.
     """
 
-    def __init__(self, grid, max_number_of_peaks=None, is_bounded = True, seed = 0):
+    sim_config_template = {
+        "navigation_map": np.ones((100, 100)),
+        "seed": 9875123,
+        "max_number_of_peaks": None,
+        "normalize": True,
+    }
 
-        """ Maximum number of peaks encountered in the scenario. """
-        self.max_number_of_peaks = 6 if max_number_of_peaks is None else max_number_of_peaks
-        self.seed = seed
+    def __init__(self, sim_config: dict):
+        super().__init__(sim_config)
+
+        self.ground_truth_field = None
+        self.max_number_of_peaks = 6 if sim_config['max_number_of_peaks'] is None else sim_config['max_number_of_peaks']
+        self.seed = sim_config['seed']
+
         np.random.seed(self.seed)
 
         """ random map features creation """
-        self.grid = 1.0 - grid
+        self.grid = 1 - sim_config['navigation_map']
+
         self.xy_size = np.array([self.grid.shape[1]/self.grid.shape[0]*10, 10])
-        self.is_bounded = is_bounded
+        self.normalize_gt = sim_config['normalize']
 
         # Peaks positions bounded from 1 to 9 in every axis
         self.number_of_peaks = np.random.randint(1, self.max_number_of_peaks+1)
@@ -57,17 +69,24 @@ class GroundTruth(object):
         else:
             self.normalized_z = self._z
 
-        if self.is_bounded:
+        if self.normalize_gt:
             self.normalized_z = np.nan_to_num(self.normalized_z, nan=np.nanmin(self.normalized_z))
             self.normalized_z = (self.normalized_z - np.min(self.normalized_z))/(np.max(self.normalized_z) - np.min(self.normalized_z))
+            
+        self.ground_truth_field = self.normalized_z
 
-    def reset(self):
+    def reset(self, random_benchmark=True):
+
+
+        if random_benchmark:
+            self.seed += 1
+
         """ Reset ground Truth """
         # Peaks positions bounded from 1 to 9 in every axis
-        self.number_of_peaks = np.random.randint(1,self.max_number_of_peaks+1)
-        self.A = np.random.rand(self.number_of_peaks, 2) * self.xy_size * 0.9 + self.xy_size*0.1
+        self.number_of_peaks = np.random.RandomState(self.seed).randint(1, self.max_number_of_peaks+1)
+        self.A = np.random.RandomState(self.seed).rand(self.number_of_peaks, 2) * self.xy_size * 0.9 + self.xy_size*0.1
         # Peaks size bounded from a minimum 2.5 to 5
-        self.C = np.random.rand(self.number_of_peaks, 1) * 4 + 1
+        self.C = np.random.RandomState(self.seed).rand(self.number_of_peaks, 1) * 4 + 1
         # Reconstruct the field #
         self.create_field()
 
@@ -76,9 +95,9 @@ class GroundTruth(object):
         """ Read the complete ground truth or a certain position """
 
         if position is None:
-            return self.normalized_z
+            return self.ground_truth_field
         else:
-            return self.normalized_z[position[0]][position[1]]
+            return self.ground_truth_field[position[0]][position[1]]
 
     def render(self):
 
@@ -91,16 +110,26 @@ class GroundTruth(object):
                       self.A[:, 1]*self.grid.shape[1]/10, 'hk', )
         plt.show()
 
+    def step(self):
+        # This ground truth is static #
+        pass
+
+    def update_to_time(self, t):
+        pass
+
 
 if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    ypacarai_map = np.genfromtxt('example_map.csv',delimiter=',',dtype=float)
-    gt = GroundTruth(ypacarai_map, max_number_of_peaks=3, is_bounded=True, seed=10)
+    nav_map = np.genfromtxt('./wesslinger_map.txt')
 
-    for i in range(1):
-        gt.reset()
+    gt_config = Shekel.sim_config_template
+    gt_config['navigation_map'] = nav_map
+    gt = Shekel(gt_config)
+
+    for i in range(10):
+        gt.reset(random_benchmark=True)
         gt.render()
 
 

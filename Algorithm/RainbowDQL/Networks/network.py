@@ -170,10 +170,55 @@ class NoisyDuelingVisualNetwork(nn.Module):
 		self.value_layer.reset_noise()
 
 
+class DistributionalVisualNetwork(nn.Module):
+
+	def __init__(
+			self,
+			in_dim: tuple,
+			out_dim: int,
+			number_of_features: int,
+			num_atoms: int,
+			support: torch.Tensor,
+	):
+		"""Initialization."""
+		super(DistributionalVisualNetwork, self).__init__()
+
+		self.out_dim = out_dim
+		self.support = support
+		self.num_atoms = num_atoms
+
+		# set common feature layer
+		self.feature_layer = nn.Sequential(
+			FeatureExtractor(in_dim, number_of_features),
+			nn.Linear(number_of_features, 256),
+			nn.ReLU(),
+			nn.Linear(256, 256),
+			nn.ReLU(),
+			nn.Linear(256, 256),
+			nn.ReLU(),
+			nn.Linear(256, 256),
+			nn.ReLU(),
+			nn.Linear(256, out_dim * num_atoms),
+		)
+
+	def forward(self, x: torch.Tensor) -> torch.Tensor:
+		"""Forward method implementation. First, obtain the distributions. Later, compute the mean """
+
+		# distribution := [batch, |A|, n_atoms]
+		distribution = self.dist(x)
+		q = torch.sum(distribution * self.support, dim=2)
+		return q
 
 
+	def dist(self, x: torch.Tensor) -> torch.Tensor:
+		""" Get the value distribution for atoms """
 
-
+		# Propagate to obtain the distributions [batch, |A|, n_atoms]
+		q_atoms = self.feature_layer(x).view(-1, self.out_dim, self.num_atoms)
+		# Softmax to transform logits into probabilities #
+		probs = torch.softmax(q_atoms, dim=-1)
+		# Clamp the values to avoid nans #
+		return probs.clamp(min=1E-4)
 
 
 
