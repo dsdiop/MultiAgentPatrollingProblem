@@ -3,12 +3,13 @@ from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
+from Utils.metrics_wrapper import MetricsDataCreator
 
 N = 4
 sc_map = np.genfromtxt('../Environment/example_map.csv', delimiter=',')
 visitable_locations = np.vstack(np.where(sc_map != 0)).T
 random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
+
 initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 
 env = MultiAgentPatrolling(scenario_map=sc_map,
@@ -22,10 +23,6 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                            forget_factor=0.5,
                            attrittion=0.1,
                            networked_agents=False,
-                           hard_penalization=False,
-                           max_connection_distance=7,
-                           optimal_connection_distance=3,
-                           max_number_of_disconnections=1000,
                            obstacles=False)
 
 
@@ -44,7 +41,7 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                        train_every=20,
                                        save_every=5000)
 
-multiagent.load_model('/home/azken/Samuel/MultiAgentPatrollingProblem/Learning/runs/Greedy_baseline_no_networked/Episode_45000_Policy.pth')
+multiagent.load_model('Learning/runs/Greedy_baseline_no_networked/Episode_45000_Policy.pth')
 
 metrics = MetricsDataCreator(metrics_names=['Accumulated Reward', 'Disconnections'],
                              algorithm_name='DRL',

@@ -2,40 +2,25 @@ from abc import ABC
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
-from Environment.groundtruthgenerator import GroundTruth
+from groundtruthgenerator import GroundTruth
 from scipy.spatial import distance_matrix
-
-
-class MultiagentDiscrete(gym.Space, ABC):
-
-	def __init__(self, n_actions, n_agents):
-		assert n_actions >= 0
-		self.n = n_actions
-		self.n_agents = n_agents
-		super(MultiagentDiscrete, self).__init__((), np.int64)
-
-	def sample(self):
-		return self.np_random.randint(self.n, size=(self.n_agents,))
-
-	def __repr__(self):
-		return "Multiagent Discrete(%d,%d)" % self.n, self.n_agents
-
-	def __eq__(self, other):
-		return isinstance(other, MultiagentDiscrete) and self.n_agents == other.n_agents
 
 
 class DiscreteVehicle:
 
 	def __init__(self, initial_position, n_actions, movement_length, navigation_map, detection_length):
-
+		
+		""" Initial positions of the drones """
 		self.initial_position = initial_position
 		self.position = np.copy(initial_position)
+		""" Initialize the waypoints """
 		self.waypoints = np.expand_dims(np.copy(initial_position), 0)
+		""" Detection radius for the contmaination vision """
 		self.detection_length = detection_length
 		self.navigation_map = navigation_map
-
 		self.detection_mask = self.compute_detection_mask()
 
+		""" Reset other variables """
 		self.distance = 0.0
 		self.num_of_collisions = 0
 		self.action_space = gym.spaces.Discrete(n_actions)
@@ -70,6 +55,7 @@ class DiscreteVehicle:
 		return False
 
 	def compute_detection_mask(self):
+		""" Compute the circular mask """
 
 		known_mask = np.zeros_like(self.navigation_map)
 
@@ -87,13 +73,13 @@ class DiscreteVehicle:
 		return known_mask
 
 	def reset(self, initial_position):
+		""" Reset the agent - Position, detection mask, etc. """
 
 		self.initial_position = initial_position
 		self.position = np.copy(initial_position)
 		self.waypoints = np.expand_dims(np.copy(initial_position), 0)
 		self.distance = 0.0
 		self.num_of_collisions = 0
-
 		self.detection_mask = self.compute_detection_mask()
 
 	def check_action(self, action):
@@ -106,8 +92,8 @@ class DiscreteVehicle:
 		return self.check_collision(next_position)
 
 	def move_to_position(self, goal_position):
+		""" Move to the given position """
 
-		""" Add the distance """
 		assert self.navigation_map[goal_position[0], goal_position[1]] == 1, "Invalid position to move"
 		self.distance += np.linalg.norm(goal_position - self.position)
 		""" Update the position """
@@ -125,10 +111,14 @@ class DiscreteFleet:
 	             max_connection_distance=10,
 	             optimal_connection_distance=5):
 
+		""" Coordinator of the movements of the fleet. Coordinates the common model, the distance between drones, etc. """
+
 		self.number_of_vehicles = number_of_vehicles
 		self.initial_positions = fleet_initial_positions
 		self.n_actions = n_actions
 		self.movement_length = movement_length
+
+		""" Create the vehicles object array """
 		self.vehicles = [DiscreteVehicle(initial_position=fleet_initial_positions[k],
 		                                 n_actions=n_actions,
 		                                 movement_length=movement_length,
@@ -142,9 +132,11 @@ class DiscreteFleet:
 		# Get the collective detection mask #
 		self.collective_mask = self.redundancy_mask.astype(bool)
 		self.historic_visited_mask = self.redundancy_mask.astype(bool)
-
+		# Reset model variables 
 		self.measured_values = None
 		self.measured_locations = None
+
+		# Reset fleet-communication-restriction variables #
 		self.max_connection_distance = max_connection_distance
 		self.isolated_mask = None
 		self.fleet_collisions = 0
@@ -158,7 +150,8 @@ class DiscreteFleet:
 		return arr.sum() >= len(arr) // 2
 
 	def check_fleet_collision_within(self, veh_actions):
-
+		""" Check if there is any collision between agents """
+		
 		new_positions = []
 
 		for idx, veh in enumerate(self.vehicles):
@@ -184,7 +177,6 @@ class DiscreteFleet:
 		self.agent_positions = np.asarray([veh.position for veh in self.vehicles])
 		# Sum up the collisions for termination #
 		self.fleet_collisions = np.sum([self.vehicles[k].num_of_collisions for k in range(self.number_of_vehicles)])
-
 		# Compute the redundancy mask #
 		self.redundancy_mask = np.sum([veh.detection_mask for veh in self.vehicles], axis=0)
 		# Update the collective mask #
@@ -197,6 +189,7 @@ class DiscreteFleet:
 		return collision_array
 
 	def update_isolated_mask(self):
+		""" Compute the mask of isolated vehicles. Only for restricted fleets. """
 
 		# Get the distance matrix #
 		distance = self.get_distance_matrix()
@@ -233,6 +226,7 @@ class DiscreteFleet:
 		return self.measured_values, self.measured_locations
 
 	def reset(self, initial_positions=None):
+		""" Reset the fleet """
 
 		if initial_positions is None:
 			initial_positions = self.initial_positions
@@ -255,7 +249,6 @@ class DiscreteFleet:
 		self.update_isolated_mask()
 
 	def get_distances(self):
-
 		return [self.vehicles[k].distance for k in range(self.number_of_vehicles)]
 
 	def check_collisions(self, test_actions):
@@ -272,7 +265,6 @@ class DiscreteFleet:
 			self.vehicles[k].move_to_position(goal_position=goal_list[k])
 
 	def get_distance_matrix(self):
-
 		return distance_matrix(self.agent_positions, self.agent_positions)
 
 
@@ -295,7 +287,9 @@ class MultiAgentPatrolling(gym.Env):
 	             obstacles=False,
 	             hard_penalization=False):
 
-		# Scenario map
+		""" The gym environment """
+
+		# Load the scenario map
 		self.scenario_map = scenario_map
 		self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
 		self.number_of_agents = number_of_vehicles
@@ -303,15 +297,14 @@ class MultiAgentPatrolling(gym.Env):
 		# Initial positions
 		if fleet_initial_positions is None:
 			self.random_inititial_positions = True
-			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), number_of_vehicles,
-			                                         replace=False)
+			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), number_of_vehicles, replace=False)
 			self.initial_positions = self.visitable_locations[random_positions_indx]
-
 		else:
 			self.random_inititial_positions = False
 			self.initial_positions = fleet_initial_positions
 
 		self.obstacles = obstacles
+	
 		# Number of pixels
 		self.distance_budget = distance_budget
 		self.max_number_of_movements = distance_budget // detection_length
@@ -325,6 +318,7 @@ class MultiAgentPatrolling(gym.Env):
 		self.optimal_connection_distance = optimal_connection_distance
 		self.max_connection_distance = max_connection_distance
 
+		# Create the fleets 
 		self.fleet = DiscreteFleet(number_of_vehicles=self.number_of_agents,
 		                           n_actions=8,
 		                           fleet_initial_positions=self.initial_positions,
@@ -534,7 +528,7 @@ class MultiAgentPatrolling(gym.Env):
 
 if __name__ == '__main__':
 
-	sc_map = np.genfromtxt('example_map.csv', delimiter=',')
+	sc_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
 
 	initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])
 
@@ -545,15 +539,11 @@ if __name__ == '__main__':
 	                           seed=10,
 	                           detection_length=2,
 	                           movement_length=1,
-	                           max_collisions=5,
+	                           max_collisions=500,
 	                           forget_factor=0.5,
 	                           attrittion=0.1,
 	                           networked_agents=False,
-	                           hard_penalization=False,
-	                           max_connection_distance=7,
-	                           optimal_connection_distance=3,
-	                           max_number_of_disconnections=10,
-	                           obstacles=False)
+	                           obstacles=True)
 
 	env.reset()
 
