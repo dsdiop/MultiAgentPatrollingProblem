@@ -10,7 +10,7 @@ sys.path.append('.')
 from Environment.DistributedPatrollingEnvironments import DistributedDiscretePatrollingEnv
 import numpy as np
 from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
-from Environment.groundtruthgenerator import GroundTruth
+from Environment.GroundTruthsModels.ShekelGroundTruth import GroundTruth
 
 
 N = 4

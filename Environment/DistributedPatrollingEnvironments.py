@@ -375,7 +375,6 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 		self.gt.reset()
 		self.fleet.ground_truth = self.gt.read()
 
-
 		# Reset the fleet state #
 		self.fleet.reset()
 		# Reset termination conditions #
@@ -479,12 +478,13 @@ class DistributedDiscretePatrollingEnv(gym.Env):
 
 
 if __name__ == '__main__':
-	from groundtruthgenerator import GroundTruth
+	
+	from GroundTruthsModels.ShekelGroundTruth import GroundTruth
 	import time
 
 
 	N = 2
-	nav_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
+	nav_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
 	gt = GroundTruth(nav_map, max_number_of_peaks=6)
 
 

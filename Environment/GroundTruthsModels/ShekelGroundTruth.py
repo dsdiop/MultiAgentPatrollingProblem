@@ -27,7 +27,7 @@ class GroundTruth(object):
         self.number_of_peaks = np.random.randint(1, self.max_number_of_peaks+1)
         self.A = np.random.rand(self.number_of_peaks, 2) * self.xy_size * 0.8 + self.xy_size*0.2
         # Peaks size bounded from a minimum 2.5 to 5
-        self.C = np.random.rand(self.number_of_peaks, 1) * 4 + 0
+        self.C = np.random.rand(self.number_of_peaks, 1) + 0.5
 
         """ Creation of the map field """
         self._x = np.arange(0, self.grid.shape[1], 1)
@@ -67,7 +67,7 @@ class GroundTruth(object):
         self.number_of_peaks = np.random.randint(1,self.max_number_of_peaks+1)
         self.A = np.random.rand(self.number_of_peaks, 2) * self.xy_size * 0.9 + self.xy_size*0.1
         # Peaks size bounded from a minimum 2.5 to 5
-        self.C = np.random.rand(self.number_of_peaks, 1) * 4 + 1
+        self.C = np.random.rand(self.number_of_peaks, 1) + 0.5
         # Reconstruct the field #
         self.create_field()
 
@@ -96,10 +96,10 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    ypacarai_map = np.genfromtxt('example_map.csv',delimiter=',',dtype=float)
-    gt = GroundTruth(ypacarai_map, max_number_of_peaks=3, is_bounded=True, seed=10)
+    ypacarai_map = np.genfromtxt('Environment/example_map.csv',delimiter=',',dtype=float)
+    gt = GroundTruth(ypacarai_map, max_number_of_peaks=6, is_bounded=True, seed=10)
 
-    for i in range(1):
+    for i in range(10):
         gt.reset()
         gt.render()
 

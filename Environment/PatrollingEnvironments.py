@@ -1,9 +1,12 @@
-from abc import ABC
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
-from groundtruthgenerator import GroundTruth
+from GroundTruthsModels.ShekelGroundTruth import GroundTruth
+from GroundTruthsModels.AlgaeBloomGroundTruth import algae_bloom, algae_colormap, background_colormap
 from scipy.spatial import distance_matrix
+import matplotlib
+
+background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","dodgerblue"])
 
 
 class DiscreteVehicle:
@@ -13,8 +16,10 @@ class DiscreteVehicle:
 		""" Initial positions of the drones """
 		self.initial_position = initial_position
 		self.position = np.copy(initial_position)
+
 		""" Initialize the waypoints """
 		self.waypoints = np.expand_dims(np.copy(initial_position), 0)
+
 		""" Detection radius for the contmaination vision """
 		self.detection_length = detection_length
 		self.navigation_map = navigation_map
@@ -99,7 +104,6 @@ class DiscreteVehicle:
 		""" Update the position """
 		self.position = goal_position
 
-
 class DiscreteFleet:
 
 	def __init__(self,
@@ -170,7 +174,7 @@ class DiscreteFleet:
 	def move(self, fleet_actions):
 
 		# Check if there are collisions between vehicles #
-		self_colliding_mask = self.check_fleet_collision_within(fleet_actions)
+		self_colliding_mask = self.check_fleet_collision_within(fleet_actions) + True
 		# Process the fleet actions and move the vehicles #
 		collision_array = [self.vehicles[k].move(fleet_actions[k], valid=valid) for k, valid in zip(range(self.number_of_vehicles), self_colliding_mask)]
 		# Update vector with agent positions #
@@ -275,6 +279,7 @@ class MultiAgentPatrolling(gym.Env):
 	             number_of_vehicles,
 	             fleet_initial_positions=None,
 	             seed=0,
+				 miopic=True,
 	             detection_length=2,
 	             movement_length=2,
 	             max_collisions=5,
@@ -304,6 +309,7 @@ class MultiAgentPatrolling(gym.Env):
 			self.initial_positions = fleet_initial_positions
 
 		self.obstacles = obstacles
+		self.miopic = miopic
 	
 		# Number of pixels
 		self.distance_budget = distance_budget
@@ -329,7 +335,8 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.max_collisions = max_collisions
 
-		self.gt = GroundTruth(self.scenario_map, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
+		# self.gt = GroundTruth(self.scenario_map, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
+		self.gt = algae_bloom(self.scenario_map)
 
 		""" Model attributes """
 		self.actual_known_map = None
@@ -412,7 +419,7 @@ class MultiAgentPatrolling(gym.Env):
 		# State 1 -> Temporal mask
 		state[1] = self.idleness_matrix
 		# State 2 -> Known information
-		state[2] = self.importance_matrix * self.fleet.historic_visited_mask
+		state[2] = self.importance_matrix * self.fleet.historic_visited_mask if self.miopic else self.importance_matrix
 
 		# State 3 and so on
 		for i in range(self.number_of_agents):
@@ -445,6 +452,9 @@ class MultiAgentPatrolling(gym.Env):
 			if self.fleet.number_of_disconnections > self.max_number_of_disconnections and self.hard_networked_penalization:
 				done = True
 
+		# Update ground truth
+		self.gt.step()
+
 		return self.state, reward, done, {}
 
 	def render(self, mode='human'):
@@ -454,10 +464,10 @@ class MultiAgentPatrolling(gym.Env):
 		if self.fig is None:
 			self.fig, self.axs = plt.subplots(1, 5)
 
-			self.im0 = self.axs[0].imshow(self.state[0], cmap='gray')
-			self.im1 = self.axs[1].imshow(self.state[1],  cmap='jet_r')
-			self.im2 = self.axs[2].imshow(self.state[2],  cmap='coolwarm')
-			self.im3 = self.axs[3].imshow(self.state[3], cmap='gray')
+			self.im0 = self.axs[0].imshow(self.state[0], cmap = background_colormap)
+			self.im1 = self.axs[1].imshow(self.state[1],  cmap = 'jet_r')
+			self.im2 = self.axs[2].imshow(self.state[2],  cmap=algae_colormap, vmin=0.0, vmax=1.0)
+			self.im3 = self.axs[3].imshow(self.state[3], cmap = 'gray')
 			self.im4 = self.axs[4].imshow(
 				np.clip(np.sum(self.state[4:self.number_of_agents + 4][:, :, :, np.newaxis], axis=0), 0, 1),
 				cmap='gray')
@@ -528,22 +538,23 @@ class MultiAgentPatrolling(gym.Env):
 
 if __name__ == '__main__':
 
-	sc_map = np.genfromtxt('Environment/example_map.csv', delimiter=',')
+	sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
 
 	initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])
 
 	env = MultiAgentPatrolling(scenario_map=sc_map,
 	                           fleet_initial_positions=initial_positions,
-	                           distance_budget=200,
+	                           distance_budget=400,
 	                           number_of_vehicles=4,
 	                           seed=10,
-	                           detection_length=1,
+							   miopic=True,
+	                           detection_length=2,
 	                           movement_length=1,
 	                           max_collisions=500,
 	                           forget_factor=0.5,
 	                           attrittion=0.1,
 	                           networked_agents=False,
-	                           obstacles=True)
+	                           obstacles=False)
 
 	env.reset()
 
@@ -551,8 +562,21 @@ if __name__ == '__main__':
 
 	R = []
 
+	action = np.array([env.action_space.sample() for _ in range(4)])
+
 	while not done:
-		s, r, done, _ = env.step([env.action_space.sample() for _ in range(4)])
+
+		for idx, agent in enumerate(env.fleet.vehicles):
+		
+			agent_mask = np.array([agent.check_action(a) for a in range(8)], dtype=int)
+
+			if agent_mask[action[idx]]:
+				action[idx] = np.random.choice(np.arange(8), p=(1-agent_mask)/np.sum((1-agent_mask)))
+				print("collision")
+
+
+		s, r, done, _ = env.step(action)
+
 		env.render()
 		print(r)
 		R.append(r)
