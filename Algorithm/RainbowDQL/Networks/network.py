@@ -220,5 +220,66 @@ class DistributionalVisualNetwork(nn.Module):
 		# Clamp the values to avoid nans #
 		return probs.clamp(min=1E-4)
 
+class DQFDuelingVisualNetwork(nn.Module):
+
+	def __init__(
+			self,
+			in_dim: tuple,
+			out_dim: int,
+			number_of_features: int,
+	):
+		"""Initialization."""
+		super(DQFDuelingVisualNetwork, self).__init__()
+
+		self.out_dim = out_dim
+
+		# set common feature layer
+		self.feature_layer = nn.Sequential(
+			FeatureExtractor(in_dim, number_of_features),
+			nn.Linear(number_of_features, 256),
+			nn.ReLU(),
+			nn.Linear(256, 256),
+			nn.ReLU(),
+			nn.Linear(256, 256),
+			nn.ReLU(),
+		)
+
+		# set advantage layer
+		self.advantage_hidden_layer1 = nn.Linear(256, 64)
+		self.advantage_layer1 = nn.Linear(64, out_dim)
+
+		# set value layer
+		self.value_hidden_layer1 = nn.Linear(256, 64)
+		self.value_layer1 = nn.Linear(64, 1)
+
+		# set advantage layer
+		self.advantage_hidden_layer2 = nn.Linear(256, 64)
+		self.advantage_layer2 = nn.Linear(64, out_dim)
+
+		# set value layer
+		self.value_hidden_layer2 = nn.Linear(256, 64)
+		self.value_layer2 = nn.Linear(64, 1)
+
+	def forward(self, x: torch.Tensor) -> torch.Tensor:
+		"""Forward method implementation."""
+		feature = self.feature_layer(x)
+
+		adv_hid1 = F.relu(self.advantage_hidden_layer1(feature))
+		val_hid1 = F.relu(self.value_hidden_layer1(feature))
+
+		value1 = self.value_layer1(val_hid1)
+		advantage1 = self.advantage_layer1(adv_hid1)
+
+		q1 = value1 + advantage1 - advantage1.mean(dim=-1, keepdim=True)
+
+		adv_hid2 = F.relu(self.advantage_hidden_layer2(feature))
+		val_hid2 = F.relu(self.value_hidden_layer2(feature))
+
+		value2 = self.value_layer2(val_hid2)
+		advantage2 = self.advantage_layer2(adv_hid2)
+
+		q2 = value2 + advantage2 - advantage2.mean(dim=-1, keepdim=True)
+		return torch.cat((q1, q2), 1)
+
 
 

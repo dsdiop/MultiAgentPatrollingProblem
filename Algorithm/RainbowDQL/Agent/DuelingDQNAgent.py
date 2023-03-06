@@ -4,11 +4,11 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer
-from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
+from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer,  PrioritizedReplayBufferNrewards
+from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork, DQFDuelingVisualNetwork
 import torch.nn.functional as F
 from tqdm import trange
-
+from copy import copy
 
 class MultiAgentDuelingDQNAgent:
 
@@ -40,6 +40,9 @@ class MultiAgentDuelingDQNAgent:
 			log_name="Experiment",
 			save_every=None,
 			train_every=1,
+			# Choose Q-function
+			use_nu: bool = False,
+			nu_intervals=[[0., 1], [0.5, 1.], [0.5, 0.], [1., 0.]]
 	):
 		"""
 
@@ -68,7 +71,7 @@ class MultiAgentDuelingDQNAgent:
 		""" Observation space dimensions """
 		obs_dim = env.observation_space.shape
 		action_dim = env.action_space.n
-
+		self.action_dim = action_dim
 		""" Agent embeds the environment """
 		self.env = env
 		self.batch_size = batch_size
@@ -87,15 +90,24 @@ class MultiAgentDuelingDQNAgent:
 		self.num_atoms = num_atoms
 		self.train_every = train_every
 
+		self.use_nu = use_nu
+		if self.use_nu:
+			self.nu_intervals = nu_intervals
+			self.nu = self.nu_intervals[0][1]
+
 		""" Automatic selection of the device """
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+		#self.device = torch.device("cpu")
 
 		print("Selected device: ", self.device)
 
 		""" Prioritized Experience Replay """
 		self.beta = beta
 		self.prior_eps = prior_eps
-		self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, batch_size, alpha=alpha)
+		if self.use_nu:
+			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, batch_size, alpha=alpha)
+		else:
+			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, batch_size, alpha=alpha)
 
 		""" Create the DQN and the DQN-Target (noisy if selected) """
 		if self.noisy:
@@ -105,6 +117,9 @@ class MultiAgentDuelingDQNAgent:
 			self.support = torch.linspace(self.v_interval[0], self.v_interval[1], self.num_atoms).to(self.device)
 			self.dqn = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 			self.dqn_target = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
+		elif self.use_nu:
+			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 		else:
 			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
@@ -132,8 +147,26 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn.reset_noise()
 			self.dqn_target.reset_noise()
 
+		"""Action"""
+
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
+	def choose_q_function(self, state: np.ndarray):
+
+		"""Select an action from the input state. If deterministic, no noise is applied. """
+
+		if self.epsilon > np.random.rand() and not self.noisy:
+			selected_action = self.env.action_space.sample()
+
+		else:
+			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
+			if self.nu > np.random.rand():
+				selected_action = np.argmax(q_values.squeeze(0)[self.action_dim:])
+			else:
+				selected_action = np.argmax(q_values.squeeze(0)[:self.action_dim])
+
+
+		return selected_action
 
 	def predict_action(self, state: np.ndarray):
 
@@ -150,7 +183,10 @@ class MultiAgentDuelingDQNAgent:
 
 	def select_action(self, states: dict) -> dict:
 
-		actions = {agent_id: self.predict_action(state) for agent_id, state in states.items()}
+		if self.use_nu:
+			actions = {agent_id: self.choose_q_function(state) for agent_id, state in states.items()}
+		else:
+			actions = {agent_id: self.predict_action(state) for agent_id, state in states.items()}
 
 		return actions
 
@@ -160,9 +196,9 @@ class MultiAgentDuelingDQNAgent:
 		next_state, reward, done, _ = self.env.step(action)
 
 		return next_state, reward, done
-
+	"""
 	def update_model(self) -> torch.Tensor:
-		"""Update the model by gradient descent."""
+		# Update the model by gradient descent. #
 
 		# PER needs beta to calculate weights
 		samples = self.memory.sample_batch(self.beta)
@@ -189,6 +225,56 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn_target.reset_noise()
 
 		return loss.item()
+	"""
+	def update_model(self) -> torch.Tensor:
+		# Update the model by gradient descent. #
+
+		# PER needs beta to calculate weights
+		samples = self.memory.sample_batch(self.beta)
+		weights = torch.FloatTensor(samples["weights"].reshape(-1, 1)).to(self.device)
+		indices = samples["indices"]
+		losses = []
+		samples_aux = copy(samples)
+		for i in range(2):
+			samples_aux["rews"] = samples["rews"][:, i]
+			offset = i*self.action_dim
+			samples_aux["acts"] = samples["acts"] + offset
+			# PER: importance sampling before average
+			elementwise_loss = self._compute_dqn_loss(samples_aux)
+			loss = torch.mean(elementwise_loss * weights)
+
+			# Compute gradients and apply them
+			self.optimizer.zero_grad()
+			loss.backward()
+			self.optimizer.step()
+
+			# PER: update priorities
+			loss_for_prior = elementwise_loss.detach().cpu().numpy()
+			new_priorities = loss_for_prior + self.prior_eps
+			self.memory.update_priorities(indices, new_priorities)
+			losses.append(loss.item())
+		"""
+			# Sample new noisy distribution
+			if self.noisy:
+				self.dqn.reset_noise()
+				self.dqn_target.reset_noise()
+		"""
+
+		return losses
+	@staticmethod
+	def anneal_nu(p, p1=[0., 1], p2=[0.5, 1.], p3=[0.5, 0.], p4=[1., 0.]):
+
+		if p <= p2[0]:
+			first_p = p1
+			second_p = p2
+		elif p <= p3[0]:
+			first_p = p2
+			second_p = p3
+		elif p <= p4[0]:
+			first_p = p3
+			second_p = p4
+
+		return (second_p[1] - first_p[1]) / (second_p[0] - first_p[0]) * (p - first_p[0]) + first_p[1]
 
 	@staticmethod
 	def anneal_epsilon(p, p_init=0.1, p_fin=0.9, e_init=1.0, e_fin=0.0):
@@ -226,7 +312,7 @@ class MultiAgentDuelingDQNAgent:
 		self.episode = 1
 		# Reset metrics #
 		episodic_reward_vector = []
-		record = -np.inf
+		record = np.array([-np.inf, -np.inf])
 
 		for episode in trange(1, int(episodes) + 1):
 
@@ -250,23 +336,26 @@ class MultiAgentDuelingDQNAgent:
 			                                   p_fin=self.epsilon_interval[1],
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
-
+			if self.use_nu:
+				self.nu = self. anneal_nu(p=episode / episodes,
+										  p1=self.nu_intervals[0],
+										  p2=self.nu_intervals[1],
+										  p3=self.nu_intervals[2],
+										  p4=self.nu_intervals[3])
 			# Run an episode #
 			while not all(done.values()):
 
-				# Inrease the played steps #
+				# Increase the played steps #
 				steps += 1
 
 				# Select the action using the current policy
 				actions = self.select_action(state)
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
-
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
+				for agent_id in actions.keys():
 
-				for agent_id in next_state.keys():
-
-				# Store every observation for every agent
+					# Store every observation for every agent
 					self.transition = [state[agent_id],
 					                   actions[agent_id],
 					                   reward[agent_id],
@@ -279,7 +368,7 @@ class MultiAgentDuelingDQNAgent:
 				# Update the state
 				state = next_state
 				# Accumulate indicators
-				score += np.mean(list(reward.values()))  # The mean reward among the agents
+				score += np.mean(list(reward.values()),axis=0)  # The mean reward among the agents
 				length += 1
 
 				# if episode ends
@@ -299,12 +388,18 @@ class MultiAgentDuelingDQNAgent:
 					self.log_data()
 
 					# Save policy if is better on average
-					mean_episodic_reward = np.mean(episodic_reward_vector[-50:])
-					if mean_episodic_reward > record:
-						print(f"New best policy with mean reward of {mean_episodic_reward}")
+					mean_episodic_reward = np.mean(episodic_reward_vector[-50:], axis=0)
+					if mean_episodic_reward[0] > record[0]:
+						print(f"New best policy with mean information reward of {mean_episodic_reward[0]}")
 						print("Saving model in " + self.writer.log_dir)
-						record = mean_episodic_reward
-						self.save_model(name='BestPolicy.pth')
+						record[0] = mean_episodic_reward[0]
+						self.save_model(name='BestPolicy_reward_information.pth')
+
+					if mean_episodic_reward[1] > record[1]:
+						print(f"New best policy with mean exploration reward of {mean_episodic_reward[1]}")
+						print("Saving model in " + self.writer.log_dir)
+						record[1] = mean_episodic_reward[1]
+						self.save_model(name='BestPolicy_reward_exploration.pth')
 
 				# If training is ready
 				if len(self.memory) >= self.batch_size and episode >= self.learning_starts:
@@ -414,7 +509,13 @@ class MultiAgentDuelingDQNAgent:
 		self.writer.add_scalar('train/epsilon', self.epsilon, self.episode)
 		self.writer.add_scalar('train/beta', self.beta, self.episode)
 
-		self.writer.add_scalar('train/accumulated_reward', self.episodic_reward, self.episode)
+		percentage_visited = np.count_nonzero(self.env.fleet.historic_visited_mask) / np.count_nonzero(self.env.scenario_map)
+		self.writer.add_scalar('train/percentage_visited', percentage_visited, self.episode)
+		if self.use_nu:
+			self.writer.add_scalar('train/nu', self.nu, self.episode)
+
+		self.writer.add_scalar('train/accumulated_reward_information', self.episodic_reward[0], self.episode)
+		self.writer.add_scalar('train/accumulated_reward_exploration', self.episodic_reward[1], self.episode)
 		self.writer.add_scalar('train/accumulated_length', self.episodic_length, self.episode)
 
 		self.writer.flush()

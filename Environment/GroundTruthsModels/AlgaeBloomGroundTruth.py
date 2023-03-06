@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
 import matplotlib.colors
+import matplotlib.pyplot as plt
 
 algae_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue","darkcyan", "darkgreen", "forestgreen"])
 background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","sienna"])
@@ -9,9 +10,10 @@ fuelspill_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["d
 
 class algae_bloom:
 
-    def __init__(self, grid: np.ndarray, dt = 0.2) -> None:
+    def __init__(self, grid: np.ndarray, dt = 0.2, seed = 0) -> None:
         """ Generador de ground truths de algas con dinámica """
 
+        np.random.seed(seed)
         # Creamos un mapa vacio #
         self.map = np.zeros_like(grid)
         self.grid = grid
@@ -126,7 +128,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    gt = algae_bloom(np.genfromtxt('Environment/Maps/example_map.csv', delimiter=','), dt=0.2)
+    gt = algae_bloom(np.genfromtxt('../Maps/example_map.csv', delimiter=','), dt=0.2)
 
     m = gt.reset()
     gt.render()
