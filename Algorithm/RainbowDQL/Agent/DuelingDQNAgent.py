@@ -9,6 +9,8 @@ from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDue
 import torch.nn.functional as F
 from tqdm import trange
 from copy import copy
+import json
+import os
 
 class MultiAgentDuelingDQNAgent:
 
@@ -42,7 +44,10 @@ class MultiAgentDuelingDQNAgent:
 			train_every=1,
 			# Choose Q-function
 			use_nu: bool = False,
-			nu_intervals=[[0., 1], [0.5, 1.], [0.5, 0.], [1., 0.]]
+			nu_intervals=[[0., 1], [0.5, 1.], [0.5, 0.], [1., 0.]],
+			# Evaluation
+			eval_every=None,
+			eval_episodes=1000,
 	):
 		"""
 
@@ -67,6 +72,8 @@ class MultiAgentDuelingDQNAgent:
 		self.experiment_name = log_name
 		self.writer = None
 		self.save_every = save_every
+		self.eval_every = eval_every
+		self.eval_episodes = eval_episodes
 
 		""" Observation space dimensions """
 		obs_dim = env.observation_space.shape
@@ -305,7 +312,11 @@ class MultiAgentDuelingDQNAgent:
 		steps = 0
 		# Create train logger #
 		if self.writer is None:
+			assert not os.path.exists(self.logdir), "El directorio ya existe. He evitado que se sobrescriba"
 			self.writer = SummaryWriter(log_dir=self.logdir, filename_suffix=self.experiment_name)
+			self.write_experiment_config()
+			self.env.save_environment_configuration(self.logdir if self.logdir is not None else './')
+
 		# Agent in training mode #
 		self.is_eval = False
 		# Reset episode count #
@@ -313,7 +324,8 @@ class MultiAgentDuelingDQNAgent:
 		# Reset metrics #
 		episodic_reward_vector = []
 		record = np.array([-np.inf, -np.inf])
-
+		mean_record = -np.inf
+		max_movements = self.env.max_number_of_movements
 		for episode in trange(1, int(episodes) + 1):
 
 			done = {i:False for i in range(self.env.number_of_agents)}
@@ -336,15 +348,16 @@ class MultiAgentDuelingDQNAgent:
 			                                   p_fin=self.epsilon_interval[1],
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
-			if self.use_nu:
-				self.nu = self. anneal_nu(p=episode / episodes,
-										  p1=self.nu_intervals[0],
-										  p2=self.nu_intervals[1],
-										  p3=self.nu_intervals[2],
-										  p4=self.nu_intervals[3])
+
 			# Run an episode #
 			while not all(done.values()):
 
+				if self.use_nu:
+					self.nu = self.anneal_nu(p=length / max_movements,
+											 p1=self.nu_intervals[0],
+											 p2=self.nu_intervals[1],
+											 p3=self.nu_intervals[2],
+											 p4=self.nu_intervals[3])
 				# Increase the played steps #
 				steps += 1
 
@@ -389,6 +402,7 @@ class MultiAgentDuelingDQNAgent:
 
 					# Save policy if is better on average
 					mean_episodic_reward = np.mean(episodic_reward_vector[-50:], axis=0)
+					mean_reward = np.mean(mean_episodic_reward)
 					if mean_episodic_reward[0] > record[0]:
 						print(f"New best policy with mean information reward of {mean_episodic_reward[0]}")
 						print("Saving model in " + self.writer.log_dir)
@@ -400,7 +414,11 @@ class MultiAgentDuelingDQNAgent:
 						print("Saving model in " + self.writer.log_dir)
 						record[1] = mean_episodic_reward[1]
 						self.save_model(name='BestPolicy_reward_exploration.pth')
-
+					if mean_reward > mean_record:
+						print(f"New best policy with mean reward of {mean_reward}")
+						print("Saving model in " + self.writer.log_dir)
+						mean_record = mean_reward
+						self.save_model(name='BestPolicy.pth')
 				# If training is ready
 				if len(self.memory) >= self.batch_size and episode >= self.learning_starts:
 
@@ -420,6 +438,14 @@ class MultiAgentDuelingDQNAgent:
 			if self.save_every is not None:
 				if episode % self.save_every == 0:
 					self.save_model(name=f'Episode_{episode}_Policy.pth')
+
+			if self.eval_every is not None:
+				if episode % self.eval_every == 0:
+					mean_reward_information, mean_reward_exploration, mean_reward, mean_length = self.evaluate_env(self.eval_episodes)
+					self.writer.add_scalar('test/accumulated_reward_information', mean_reward_information, self.episode)
+					self.writer.add_scalar('test/accumulated_reward_exploration', mean_reward_exploration, self.episode)
+					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
+					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
 
 		# Save the final policy #
 		self.save_model(name='Final_Policy.pth')
@@ -527,3 +553,73 @@ class MultiAgentDuelingDQNAgent:
 	def save_model(self, name='experiment.pth'):
 
 		torch.save(self.dqn.state_dict(), self.writer.log_dir + '/' + name)
+
+	def evaluate_env(self, eval_episodes, render=False):
+		""" Evaluate the agent on the environment for a given number of episodes with a deterministic policy """
+
+		self.dqn.eval()
+		total_reward = 0
+		total_reward_information = 0
+		total_reward_exploration = 0
+		total_length = 0
+
+		for _ in trange(eval_episodes):
+
+			# Reset the environment #
+			state = self.env.reset()
+			if render:
+				self.env.render()
+			done = {agent_id: False for agent_id in range(self.env.number_of_agents)}
+
+			while not all(done.values()):
+
+				total_length += 1
+
+				# Select the action using the current policy
+				actions = self.select_action(state)
+
+				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
+
+				# Process the agent step #
+				next_state, reward, done = self.step(actions)
+
+				if render:
+					self.env.render()
+
+				# Update the state #
+				state = next_state
+				rewards = np.asarray(list(reward.values()))
+				total_reward_information = np.sum(rewards[:,0])
+				total_reward_exploration = np.sum(rewards[:,1])
+				total_reward += total_reward_exploration + total_reward_information
+
+		self.dqn.train()
+
+		# Return the average reward, average length
+
+		return total_reward_information / eval_episodes, total_reward_exploration / eval_episodes, total_reward / eval_episodes, total_length / eval_episodes
+
+	def write_experiment_config(self):
+		""" Write experiment and environment variables in a json file """
+
+		self.experiment_config = {
+			"save_every": self.save_every,
+			"eval_every": self.eval_every,
+			"eval_episodes": self.eval_episodes,
+			"batch_size": self.batch_size,
+			"gamma": self.gamma,
+			"tau": self.tau,
+			"lr": self.learning_rate,
+			"epsilon": self.epsilon,
+			"epsilon_values": self.epsilon_values,
+			"epsilon_interval": self.epsilon_interval,
+			"beta": self.beta,
+			"num_atoms": self.num_atoms,
+			"use_nu": self.use_nu,
+			"nu": self.nu,
+			"nu_intervals": self.nu_intervals,
+		}
+
+		with open(self.writer.log_dir + '/experiment_config.json', 'w') as f:
+			json.dump(self.experiment_config, f, indent=4)
+

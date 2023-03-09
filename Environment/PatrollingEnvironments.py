@@ -83,7 +83,7 @@ class DiscreteVehicle:
 
 		known_mask[mask.T] = 1.0
 
-		return known_mask
+		return known_mask*self.navigation_map
 
 	def reset(self, initial_position):
 		""" Reset the agent - Position, detection mask, etc. """
