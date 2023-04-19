@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 N = 4
-sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+sc_map = np.genfromtxt(data_path+'/Environment/Maps/example_map.csv', delimiter=',')
 visitable_locations = np.vstack(np.where(sc_map != 0)).T
 random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
 initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
