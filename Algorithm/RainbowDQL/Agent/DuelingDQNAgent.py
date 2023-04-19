@@ -1,3 +1,7 @@
+import sys
+import os
+data_path = os.path.join(os.path.dirname(__file__), '..','..','..')
+sys.path.append(data_path)
 from typing import Dict, List, Tuple
 import gym
 import numpy as np
@@ -34,6 +38,7 @@ class MultiAgentDuelingDQNAgent:
 			# NN parameters
 			number_of_features: int = 1024,
 			noisy: bool = False,
+      nettype: str='0',
 			# Distributional parameters #
 			distributional: bool = False,
 			num_atoms: int = 51,
@@ -96,7 +101,8 @@ class MultiAgentDuelingDQNAgent:
 		self.v_interval = v_interval
 		self.num_atoms = num_atoms
 		self.train_every = train_every
-
+		self.nettype = nettype
+        
 		self.use_nu = use_nu
 		if self.use_nu:
 			self.nu_intervals = nu_intervals
@@ -125,11 +131,11 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 			self.dqn_target = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 		elif self.use_nu:
-			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
-			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
+			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
 		else:
-			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
-			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
+			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
 
 		self.dqn_target.load_state_dict(self.dqn.state_dict())
 		self.dqn_target.eval()
@@ -168,9 +174,9 @@ class MultiAgentDuelingDQNAgent:
 		else:
 			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
 			if self.nu > np.random.rand():
-				selected_action = np.argmax(q_values.squeeze(0)[self.action_dim:])
-			else:
 				selected_action = np.argmax(q_values.squeeze(0)[:self.action_dim])
+			else:
+				selected_action = np.argmax(q_values.squeeze(0)[self.action_dim:])
 
 
 		return selected_action
@@ -203,7 +209,7 @@ class MultiAgentDuelingDQNAgent:
 		next_state, reward, done, _ = self.env.step(action)
 
 		return next_state, reward, done
-	"""
+
 	def update_model(self) -> torch.Tensor:
 		# Update the model by gradient descent. #
 
@@ -213,7 +219,7 @@ class MultiAgentDuelingDQNAgent:
 		indices = samples["indices"]
 
 		# PER: importance sampling before average
-		elementwise_loss = self._compute_dqn_loss(samples)
+		elementwise_loss = self._compute_ddqn_multihead_loss(samples)
 		loss = torch.mean(elementwise_loss * weights)
 
 		# Compute gradients and apply them
@@ -260,14 +266,15 @@ class MultiAgentDuelingDQNAgent:
 			new_priorities = loss_for_prior + self.prior_eps
 			self.memory.update_priorities(indices, new_priorities)
 			losses.append(loss.item())
-		"""
+		
 			# Sample new noisy distribution
 			if self.noisy:
 				self.dqn.reset_noise()
 				self.dqn_target.reset_noise()
-		"""
+		
 
 		return losses
+	"""
 	@staticmethod
 	def anneal_nu(p, p1=[0., 1], p2=[0.5, 1.], p3=[0.5, 0.], p4=[1., 0.]):
 
@@ -282,7 +289,17 @@ class MultiAgentDuelingDQNAgent:
 			second_p = p4
 
 		return (second_p[1] - first_p[1]) / (second_p[0] - first_p[0]) * (p - first_p[0]) + first_p[1]
+	@staticmethod
+	def anneal_epsilon2(p, p1=[0., 1], p2=[0.5, 0.1], p3=[1., 0.05]):
 
+		if p <= p2[0]:
+			first_p = p1
+			second_p = p2
+		elif p <= p3[0]:
+			first_p = p2
+			second_p = p3
+
+		return (second_p[1] - first_p[1]) / (second_p[0] - first_p[0]) * (p - first_p[0]) + first_p[1]
 	@staticmethod
 	def anneal_epsilon(p, p_init=0.1, p_fin=0.9, e_init=1.0, e_fin=0.0):
 
@@ -325,7 +342,7 @@ class MultiAgentDuelingDQNAgent:
 		episodic_reward_vector = []
 		record = np.array([-np.inf, -np.inf])
 		mean_record = -np.inf
-		max_movements = self.env.max_number_of_movements
+		max_movements = self.env.distance_budget
 		for episode in trange(1, int(episodes) + 1):
 
 			done = {i:False for i in range(self.env.number_of_agents)}
@@ -333,7 +350,8 @@ class MultiAgentDuelingDQNAgent:
 			score = 0
 			length = 0
 			losses = []
-
+			#self.env.max_collisions = np.max([int(20-(episode/episodes)*20*1.5), 5])
+			#self.writer.add_scalar('pruebas/max_collisions', self.env.max_collisions, self.episode)
 			# Initially sample noisy policy #
 			if self.noisy:
 				self.dqn.reset_noise()
@@ -348,12 +366,12 @@ class MultiAgentDuelingDQNAgent:
 			                                   p_fin=self.epsilon_interval[1],
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
-
 			# Run an episode #
 			while not all(done.values()):
 
 				if self.use_nu:
-					self.nu = self.anneal_nu(p=length / max_movements,
+					distance = np.min([np.max(self.env.fleet.get_distances()), max_movements])
+					self.nu = self.anneal_nu(p= distance / max_movements,
 											 p1=self.nu_intervals[0],
 											 p2=self.nu_intervals[1],
 											 p3=self.nu_intervals[2],
@@ -397,6 +415,7 @@ class MultiAgentDuelingDQNAgent:
 					episodic_reward_vector.append(self.episodic_reward)
 					self.episode += 1
 
+					self.writer.add_scalar('pruebas/fleet_collisions', self.env.fleet.fleet_collisions, self.episode)
 					# Log progress
 					self.log_data()
 
@@ -449,6 +468,52 @@ class MultiAgentDuelingDQNAgent:
 
 		# Save the final policy #
 		self.save_model(name='Final_Policy.pth')
+
+	def _compute_ddqn_multihead_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
+
+		"""Return dqn loss."""
+		device = self.device  # for shortening the following lines
+		state = torch.FloatTensor(samples["obs"]).to(device)
+		next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+		#action = torch.LongTensor(samples["acts"]).to(device)
+		#reward = torch.FloatTensor(samples["rews"]).to(device)
+		done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+
+		# G_t   = r + gamma * v(s_{t+1})  if state != Terminal
+		#       = r                       otherwise
+		num_of_rewards = samples["rews"].shape[1]
+		with torch.no_grad():
+			next_maxq_values = self.dqn(next_state)
+			next_maxq_values = next_maxq_values.view((-1, num_of_rewards, self.action_dim))
+			next_max_action_values = next_maxq_values.max(dim=2, keepdim=True)[1]
+		elementwise_loss = None
+		samples_aux = copy(samples)
+
+		if not self.distributional:
+			for i in range(num_of_rewards):
+				samples_aux["rews"] = samples["rews"][:, i]
+				offset = i*self.action_dim
+				samples_aux["acts"] = samples["acts"] + offset
+
+				action = torch.LongTensor(samples_aux["acts"]).to(device)
+				reward = torch.FloatTensor(samples_aux["rews"].reshape(-1, 1)).to(device)
+				action = action.reshape(-1, 1)
+				curr_q_value = self.dqn(state).gather(1, action)
+				next_max_action_value = next_max_action_values[:, i] + offset
+				done_mask = 1 - done
+
+				with torch.no_grad():
+					next_q_value = self.dqn_target(next_state).gather(1, next_max_action_value)
+					target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
+
+				# calculate element-wise dqn loss
+				if elementwise_loss is not None:
+					elementwise_loss += F.mse_loss(curr_q_value, target, reduction="none")
+				else:
+					elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
+
+		return elementwise_loss
+
 
 	def _compute_dqn_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
 
@@ -562,7 +627,12 @@ class MultiAgentDuelingDQNAgent:
 		total_reward_information = 0
 		total_reward_exploration = 0
 		total_length = 0
-
+		total_collissions = 0
+		max_movements = self.env.distance_budget
+		max_coll_ant=self.env.max_collisions
+		self.env.max_collisions=np.inf
+		epsilon=self.epsilon
+		self.epsilon = 0
 		for _ in trange(eval_episodes):
 
 			# Reset the environment #
@@ -574,7 +644,13 @@ class MultiAgentDuelingDQNAgent:
 			while not all(done.values()):
 
 				total_length += 1
-
+				if self.use_nu:
+					distance = np.min([np.max(self.env.fleet.get_distances()), max_movements])
+					self.nu = self.anneal_nu(p= distance / max_movements,
+											 p1=self.nu_intervals[0],
+											 p2=self.nu_intervals[1],
+											 p3=self.nu_intervals[2],
+											 p4=self.nu_intervals[3])
 				# Select the action using the current policy
 				actions = self.select_action(state)
 
@@ -589,14 +665,16 @@ class MultiAgentDuelingDQNAgent:
 				# Update the state #
 				state = next_state
 				rewards = np.asarray(list(reward.values()))
-				total_reward_information = np.sum(rewards[:,0])
-				total_reward_exploration = np.sum(rewards[:,1])
-				total_reward += total_reward_exploration + total_reward_information
-
+				total_reward_information += np.sum(rewards[:,0])
+				total_reward_exploration += np.sum(rewards[:,1])
+			total_collissions += self.env.fleet.fleet_collisions
+		total_reward += total_reward_exploration + total_reward_information
 		self.dqn.train()
-
+		self.env.max_collisions = max_coll_ant
+		self.epsilon = epsilon
 		# Return the average reward, average length
 
+		self.writer.add_scalar('test/fleet_collisions', total_collissions/ eval_episodes, self.episode)
 		return total_reward_information / eval_episodes, total_reward_exploration / eval_episodes, total_reward / eval_episodes, total_length / eval_episodes
 
 	def write_experiment_config(self):
@@ -618,6 +696,7 @@ class MultiAgentDuelingDQNAgent:
 			"use_nu": self.use_nu,
 			"nu": self.nu,
 			"nu_intervals": self.nu_intervals,
+      "nettype": self.nettype,
 		}
 
 		with open(self.writer.log_dir + '/experiment_config.json', 'w') as f:

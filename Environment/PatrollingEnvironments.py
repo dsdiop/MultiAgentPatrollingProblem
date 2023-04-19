@@ -630,7 +630,7 @@ class MultiAgentPatrolling(gym.Env):
 				veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
 
-		rewards_exploration = 0.5*np.array(
+		rewards_exploration = 0.2*np.array(
 			[np.sum(self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32) / (
 						1 * self.detection_length * self.fleet.redundancy_mask[
 					veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
@@ -678,6 +678,7 @@ class MultiAgentPatrolling(gym.Env):
 			'distance_budget': self.distance_budget,
 			'detection_length': self.detection_length,
 			'max_number_of_movements': self.max_number_of_movements,
+			'max_number_of_colissions': self.max_collisions,
 			'forgetting_factor': self.forget_factor,
 			'attrition': self.attrition,
 			'reward_type': self.reward_type,

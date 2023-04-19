@@ -227,6 +227,7 @@ class DQFDuelingVisualNetwork(nn.Module):
 			in_dim: tuple,
 			out_dim: int,
 			number_of_features: int,
+      nettype: str='0'
 	):
 		"""Initialization."""
 		super(DQFDuelingVisualNetwork, self).__init__()
@@ -235,8 +236,8 @@ class DQFDuelingVisualNetwork(nn.Module):
 
 		# set common feature layer
 		self.feature_layer = nn.Sequential(
-			FeatureExtractor(in_dim, number_of_features),
-			nn.Linear(number_of_features, 256),
+			FeatureExtractor(in_dim, number_of_features,nettype),
+			nn.Linear(number_of_features, 256), #256
 			nn.ReLU(),
 			nn.Linear(256, 256),
 			nn.ReLU(),
