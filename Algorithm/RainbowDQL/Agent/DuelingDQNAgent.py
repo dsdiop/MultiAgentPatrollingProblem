@@ -174,9 +174,9 @@ class MultiAgentDuelingDQNAgent:
 		else:
 			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
 			if self.nu > np.random.rand():
-				selected_action = np.argmax(q_values.squeeze(0)[:self.action_dim])
-			else:
 				selected_action = np.argmax(q_values.squeeze(0)[self.action_dim:])
+			else:
+				selected_action = np.argmax(q_values.squeeze(0)[:self.action_dim])
 
 
 		return selected_action
