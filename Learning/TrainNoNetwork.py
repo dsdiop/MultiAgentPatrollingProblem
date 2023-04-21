@@ -40,12 +40,12 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
                                     memory_size=int(1E6),
-                                    batch_size=128,#64
+                                    batch_size=256,#64
                                     target_update=1000,
                                     soft_update=True,
                                     tau=0.001,
                                     epsilon_values=[1.0, 0.05],
-                                    epsilon_interval=[0.0, 0.75],
+                                    epsilon_interval=[0.0, 0.5],
                                     learning_starts=100, # 100
                                     gamma=0.99,
                                     lr=1e-4,
@@ -54,9 +54,9 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                     train_every=15,
                                     save_every=1000,
                                     distributional=False,
-                                    logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_2_nettype_'+nettype,
+                                    logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_3_bs256_nettype_'+nettype,
                                     use_nu=True,
-                                    nu_intervals=[[0., 1], [0.40, 1], [0.50, 0.], [1., 0.]],
+                                    nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                     eval_episodes=10,
                                     eval_every=1000)
 

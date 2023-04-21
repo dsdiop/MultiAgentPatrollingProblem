@@ -635,10 +635,11 @@ class MultiAgentPatrolling(gym.Env):
 						1 * self.detection_length * self.fleet.redundancy_mask[
 					veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
+		"""
 		## if all the vehicles have discovered a new area (v2)
 		if 0 in rewards_exploration:
 			rewards_exploration = 2*rewards_exploration
-
+        """
 		rewards = np.vstack((rewards_information, rewards_exploration)).T
 
 		self.info = {}
