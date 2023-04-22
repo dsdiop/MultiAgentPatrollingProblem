@@ -40,7 +40,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
 
 multiagent = MultiAgentDuelingDQNAgent(env=env,
                                     memory_size=int(1E6),
-                                    batch_size=256,#64
+                                    batch_size=64,#64
                                     target_update=1000,
                                     soft_update=True,
                                     tau=0.001,
