@@ -3,6 +3,10 @@ from torch import nn
 from gym.spaces import Box
 import numpy as np
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+from cbam import CBAMBlock
 """
 class FeatureExtractor(nn.Module):
     """""" Convolutional Feature Extractor for input images """"""
@@ -56,6 +60,19 @@ class FeatureExtractor(nn.Module):
               nn.ReLU(),
               nn.Flatten()
           )
+        if nettype == '2':
+            self.cnn = nn.Sequential(
+                nn.Conv2d(in_channels=obs_space_shape[0], out_channels=64, kernel_size=3, stride=1, padding=0),
+                CBAMBlock(channel=64,reduction=16,kernel_size=7),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=0),
+                CBAMBlock(channel=32,reduction=16,kernel_size=7),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, stride=1, padding=0),
+                CBAMBlock(channel=16,reduction=16,kernel_size=7),
+                nn.ReLU(),
+                nn.Flatten()
+            )
 
         self.cnn_out_size = np.prod(self.cnn(torch.zeros(size=(1,
                                                                obs_space_shape[0],

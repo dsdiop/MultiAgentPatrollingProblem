@@ -18,7 +18,7 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 # initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 
 #frame_stack
-nettype = '0'
+nettype = '2'
 env = MultiAgentPatrolling(scenario_map=sc_map,
                         fleet_initial_positions=initial_positions,
                         distance_budget=200,
@@ -33,7 +33,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                         networked_agents=False,
                         ground_truth_type='algae_bloom',
                         obstacles=True,
-                        frame_stacking=2,
+                        frame_stacking=1,
                         state_index_stacking=(2, 3, 4),
                         reward_weights=(1.0, 0.1)
                         )
@@ -54,7 +54,7 @@ multiagent = MultiAgentDuelingDQNAgent(env=env,
                                     train_every=15,
                                     save_every=1000,
                                     distributional=False,
-                                    logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_5_fstack2_nettype_'+nettype,
+                                    logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_6_bs64_nettype_'+nettype,
                                     use_nu=True,
                                     nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                     eval_episodes=10,
