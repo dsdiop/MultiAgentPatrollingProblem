@@ -6,7 +6,7 @@ import numpy as np
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__)))
-from cbam import CBAMBlock
+from cbam import CBAMBlock, CBAMBlock_w_cnn
 """
 class FeatureExtractor(nn.Module):
     """""" Convolutional Feature Extractor for input images """"""
