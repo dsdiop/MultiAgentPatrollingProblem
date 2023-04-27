@@ -69,6 +69,67 @@ class CBAMBlock(nn.Module):
         return out + residual
 
 
+class CBAMBlock(nn.Module):
+
+    def __init__(self, channel=512,reduction=16,kernel_size=49):
+        super().__init__()
+        self.ca=ChannelAttention(channel=channel,reduction=reduction)
+        self.sa=SpatialAttention(kernel_size=kernel_size)
+
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        residual=x
+        out=x*self.ca(x)
+        out=out*self.sa(out)
+        return out+residual
+
+class CBAMBlock_w_cnn(nn.Module):
+
+    def __init__(self, channel=512, reduction=16, kernel_size_att=49,
+                 in_channels=64, out_channels=32, kernel_size_cnn=3, stride=1):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size_cnn, stride=stride, padding=0)
+        self.conv_res = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size_cnn, stride=stride, padding=0)
+        self.ca = ChannelAttention(channel=channel, reduction=reduction)
+        self.sa = SpatialAttention(kernel_size=kernel_size_att)
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        residual =self.conv_res(x)
+        out = self.conv(x)
+        out = out * self.ca(out)
+        out = out * self.sa(out)
+        return out + residual
+
 if __name__ == '__main__':
     input = torch.randn(50, 512, 7, 7)
     kernel_size = input.shape[2]
