@@ -227,23 +227,45 @@ class DQFDuelingVisualNetwork(nn.Module):
 			in_dim: tuple,
 			out_dim: int,
 			number_of_features: int,
-      nettype: str='0'
+			archtype: str='v1',
+            nettype: str='0'
 	):
 		"""Initialization."""
 		super(DQFDuelingVisualNetwork, self).__init__()
 
 		self.out_dim = out_dim
+		self.archtype = archtype
+		if self.archtype == 'v1':
+			# set common feature layer
+			self.feature_layer = nn.Sequential(
+				FeatureExtractor(in_dim, number_of_features, nettype),
+				nn.Linear(number_of_features, 256), #256
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+			)
 
-		# set common feature layer
-		self.feature_layer = nn.Sequential(
-			FeatureExtractor(in_dim, number_of_features,nettype),
-			nn.Linear(number_of_features, 256), #256
-			nn.ReLU(),
-			nn.Linear(256, 256),
-			nn.ReLU(),
-			nn.Linear(256, 256),
-			nn.ReLU(),
-		)
+		if self.archtype == 'v2':
+			# set common feature layer
+			self.feature_layer = FeatureExtractor(in_dim, number_of_features, nettype)
+			self.dense_layer1 = nn.Sequential(
+				nn.Linear(number_of_features, 256), #256
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+			)
+			self.dense_layer2 = nn.Sequential(
+				nn.Linear(number_of_features, 256), #256
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+				nn.Linear(256, 256),
+				nn.ReLU(),
+			)
 
 		# set advantage layer
 		self.advantage_hidden_layer1 = nn.Linear(256, 64)
@@ -265,22 +287,28 @@ class DQFDuelingVisualNetwork(nn.Module):
 		"""Forward method implementation."""
 		feature = self.feature_layer(x)
 
-		adv_hid1 = F.relu(self.advantage_hidden_layer1(feature))
-		val_hid1 = F.relu(self.value_hidden_layer1(feature))
+		if self.archtype == 'v1':
+			feature1 = feature2 = feature
+
+		if self.archtype == 'v2':
+			feature1 = self.dense_layer1(feature)
+			feature2 = self.dense_layer2(feature)
+
+		adv_hid1 = F.relu(self.advantage_hidden_layer1(feature1))
+		val_hid1 = F.relu(self.value_hidden_layer1(feature1))
 
 		value1 = self.value_layer1(val_hid1)
 		advantage1 = self.advantage_layer1(adv_hid1)
 
 		q1 = value1 + advantage1 - advantage1.mean(dim=-1, keepdim=True)
 
-		adv_hid2 = F.relu(self.advantage_hidden_layer2(feature))
-		val_hid2 = F.relu(self.value_hidden_layer2(feature))
+		adv_hid2 = F.relu(self.advantage_hidden_layer2(feature2))
+		val_hid2 = F.relu(self.value_hidden_layer2(feature2))
 
 		value2 = self.value_layer2(val_hid2)
 		advantage2 = self.advantage_layer2(adv_hid2)
 
 		q2 = value2 + advantage2 - advantage2.mean(dim=-1, keepdim=True)
 		return torch.cat((q1, q2), 1)
-
 
 

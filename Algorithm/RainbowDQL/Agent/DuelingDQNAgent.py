@@ -38,7 +38,8 @@ class MultiAgentDuelingDQNAgent:
 			# NN parameters
 			number_of_features: int = 1024,
 			noisy: bool = False,
-      nettype: str='0',
+            nettype: str='0',
+			archtype: str='v1',
 			# Distributional parameters #
 			distributional: bool = False,
 			num_atoms: int = 51,
@@ -131,8 +132,8 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 			self.dqn_target = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 		elif self.use_nu:
-			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
-			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
+			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
+			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
 		else:
 			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
 			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
