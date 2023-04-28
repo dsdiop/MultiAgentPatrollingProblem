@@ -40,7 +40,7 @@ for nettype, n_of_feature, archtype in zip(nettypes,n_of_features,archtypes):
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
-
+    str_n_of_feature = str(n_of_feature)
     multiagent = MultiAgentDuelingDQNAgent(env=env,
                                         memory_size=int(1E6),
                                         batch_size=64,#64
@@ -59,7 +59,7 @@ for nettype, n_of_feature, archtype in zip(nettypes,n_of_features,archtypes):
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_8_nettype_'+nettype+'_n_of_features_'+str(n_of_features)+'_archtype_'+archtype,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_8_nettype_'+nettype+'_n_of_features_'+str_n_of_feature+'_archtype_'+archtype,
                                         use_nu=True,
                                         nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,
