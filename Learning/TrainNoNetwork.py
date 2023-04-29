@@ -18,10 +18,9 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 # initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 
 #frame_stack
-nettypes = ['0', '5']
-n_of_features = [1024, 512]
+nettype = '0'
 archtypes = ['v2', 'v1']
-for nettype, n_of_feature, archtype in zip(nettypes,n_of_features,archtypes):
+for archtype in archtypes:
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -40,7 +39,7 @@ for nettype, n_of_feature, archtype in zip(nettypes,n_of_features,archtypes):
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
-    str_n_of_feature = str(n_of_feature)
+
     multiagent = MultiAgentDuelingDQNAgent(env=env,
                                         memory_size=int(1E6),
                                         batch_size=64,#64
@@ -52,16 +51,16 @@ for nettype, n_of_feature, archtype in zip(nettypes,n_of_features,archtypes):
                                         learning_starts=100, # 100
                                         gamma=0.99,
                                         lr=1e-4,
-                                        number_of_features=n_of_feature,
+                                        number_of_features=1024,
                                         noisy=False,
                                         nettype=nettype,
                                         archtype=archtype,
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_8_nettype_'+nettype+'_n_of_features_'+str_n_of_feature+'_archtype_'+archtype,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_9_nettype_'+nettype+'_archtype_'+archtype,
                                         use_nu=True,
-                                        nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+                                        nu_intervals=[[0., 1], [0.20, 1], [0.40, 0.], [1., 0.]],
                                         eval_episodes=10,
                                         eval_every=1000)
 
