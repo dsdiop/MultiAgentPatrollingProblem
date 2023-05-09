@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer,  PrioritizedReplayBufferNrewards
 from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork, DQFDuelingVisualNetwork
+from Algorithm.RainbowDQL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking
 import torch.nn.functional as F
 from tqdm import trange
 from copy import copy
@@ -40,6 +41,7 @@ class MultiAgentDuelingDQNAgent:
 			noisy: bool = False,
             nettype: str='0',
 			archtype: str='v1',
+			device='cuda:1',
 			# Distributional parameters #
 			distributional: bool = False,
 			num_atoms: int = 51,
@@ -54,6 +56,8 @@ class MultiAgentDuelingDQNAgent:
 			# Evaluation
 			eval_every=None,
 			eval_episodes=1000,
+			# Masked actions
+			masked_actions= True
 	):
 		"""
 
@@ -103,6 +107,7 @@ class MultiAgentDuelingDQNAgent:
 		self.num_atoms = num_atoms
 		self.train_every = train_every
 		self.nettype = nettype
+		self.masked_actions = masked_actions
         
 		self.use_nu = use_nu
 		if self.use_nu:
@@ -110,7 +115,7 @@ class MultiAgentDuelingDQNAgent:
 			self.nu = self.nu_intervals[0][1]
 
 		""" Automatic selection of the device """
-		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+		self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 		#self.device = torch.device("cpu")
 
 		print("Selected device: ", self.device)
@@ -161,7 +166,9 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn.reset_noise()
 			self.dqn_target.reset_noise()
 
-		"""Action"""
+		# Masking utilities #
+		self.safe_masking_module = SafeActionMasking(action_space_dim = action_dim, movement_length = self.env.movement_length)
+		self.nogoback_masking_modules = {i: NoGoBackMasking() for i in range(self.env.number_of_agents)}
 
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
@@ -195,12 +202,70 @@ class MultiAgentDuelingDQNAgent:
 
 		return selected_action
 
+	def choose_q_function_masked_action(self, state: np.ndarray, agent_id: int, position: np.ndarray):	
+		""" Select an action masked to avoid collisions and so """
+
+		# Update the state of the safety module #
+		self.safe_masking_module.update_state(position = position, new_navigation_map = state[0])
+
+		if self.epsilon > np.random.rand() and not self.noisy:
+
+			# Compute randomly the action #
+			q_values, _ = self.safe_masking_module.mask_action(q_values = None)
+			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+
+		else:
+			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
+			if self.nu > np.random.rand():
+				q_values = q_values.squeeze(0)[self.action_dim:]
+			else:
+				q_values = q_values.squeeze(0)[:self.action_dim]
+    
+			q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
+			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+				
+
+
+		return selected_action
+	def predict_masked_action(self, state: np.ndarray, agent_id: int, position: np.ndarray):
+		""" Select an action masked to avoid collisions and so """
+
+		# Update the state of the safety module #
+		self.safe_masking_module.update_state(position = position, new_navigation_map = state[0])
+
+		if self.epsilon > np.random.rand() and not self.noisy:
+
+			# Compute randomly the action #
+			q_values, _ = self.safe_masking_module.mask_action(q_values = None)
+			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+
+		else:
+			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
+			q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
+			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
+			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+
+		return selected_action
+
+
+
 	def select_action(self, states: dict) -> dict:
 
 		if self.use_nu:
 			actions = {agent_id: self.choose_q_function(state) for agent_id, state in states.items()}
 		else:
 			actions = {agent_id: self.predict_action(state) for agent_id, state in states.items()}
+
+		return actions
+
+	def select_masked_action(self, states: dict, positions: np.ndarray):
+		if self.use_nu:
+			actions = {agent_id: self.choose_q_function_masked_action(state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
+		else:
+			actions = {agent_id: self.predict_masked_action(state=state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
 
 		return actions
 
@@ -381,7 +446,13 @@ class MultiAgentDuelingDQNAgent:
 				steps += 1
 
 				# Select the action using the current policy
-				actions = self.select_action(state)
+				
+				if not self.masked_actions:
+					actions = self.select_action(state)
+				else:
+					actions = self.select_masked_action(states=state, positions=self.env.fleet.get_positions())
+
+
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
@@ -697,7 +768,8 @@ class MultiAgentDuelingDQNAgent:
 			"use_nu": self.use_nu,
 			"nu": self.nu,
 			"nu_intervals": self.nu_intervals,
-      "nettype": self.nettype,
+            "nettype": self.nettype,
+            "masked_actions": self.masked_actions
 		}
 
 		with open(self.writer.log_dir + '/experiment_config.json', 'w') as f:

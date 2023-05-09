@@ -31,7 +31,7 @@ for archtype in archtypes:
                             movement_length=2,
                             max_collisions=15,
                             forget_factor=0.5,
-                            attrittion=0.1,
+                            attrition=0.1,
                             networked_agents=False,
                             ground_truth_type='algae_bloom',
                             obstacles=True,
@@ -60,7 +60,7 @@ for archtype in archtypes:
                                         distributional=False,
                                         logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_9_nettype_'+nettype+'_archtype_'+archtype,
                                         use_nu=True,
-                                        nu_intervals=[[0., 1], [0.20, 1], [0.40, 0.], [1., 0.]],
+                                        nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,
                                         eval_every=1000)
 

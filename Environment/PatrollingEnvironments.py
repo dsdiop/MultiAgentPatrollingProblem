@@ -306,7 +306,7 @@ class MultiAgentPatrolling(gym.Env):
 				 max_connection_distance=10,
 				 optimal_connection_distance=5,
 				 max_number_of_disconnections=10,
-				 attrittion=0.0,
+				 attrition=0.0,
 				 obstacles=False,
 				 hard_penalization=False,
 				 reward_type='Double reward',
@@ -344,7 +344,7 @@ class MultiAgentPatrolling(gym.Env):
 		# Detection radius
 		self.detection_length = detection_length
 		self.forget_factor = forget_factor
-		self.attrition = attrittion
+		self.attrition = attrition
 		# Fleet of N vehicles
 		self.optimal_connection_distance = optimal_connection_distance
 		self.max_connection_distance = max_connection_distance
@@ -719,7 +719,7 @@ if __name__ == '__main__':
 							   movement_length=1,
 							   max_collisions=500,
 							   forget_factor=0.5,
-							   attrittion=0.1,
+							   attrition=0.1,
 							   networked_agents=False,
 							   ground_truth_type='algae_bloom',
 							   obstacles=True,
