@@ -107,6 +107,7 @@ class MultiAgentDuelingDQNAgent:
 		self.num_atoms = num_atoms
 		self.train_every = train_every
 		self.nettype = nettype
+		self.archtype = archtype
 		self.masked_actions = masked_actions
         
 		self.use_nu = use_nu
@@ -487,7 +488,7 @@ class MultiAgentDuelingDQNAgent:
 					episodic_reward_vector.append(self.episodic_reward)
 					self.episode += 1
 
-					self.writer.add_scalar('pruebas/fleet_collisions', self.env.fleet.fleet_collisions, self.episode)
+					self.writer.add_scalar('train/fleet_collisions', self.env.fleet.fleet_collisions, self.episode)
 					# Log progress
 					self.log_data()
 
@@ -532,11 +533,12 @@ class MultiAgentDuelingDQNAgent:
 
 			if self.eval_every is not None:
 				if episode % self.eval_every == 0:
-					mean_reward_information, mean_reward_exploration, mean_reward, mean_length = self.evaluate_env(self.eval_episodes)
+					mean_reward_information, mean_reward_exploration, mean_reward, mean_length, mean_collisions = self.evaluate_agents(self.eval_episodes)
 					self.writer.add_scalar('test/accumulated_reward_information', mean_reward_information, self.episode)
 					self.writer.add_scalar('test/accumulated_reward_exploration', mean_reward_exploration, self.episode)
 					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
+					self.writer.add_scalar('test/fleet_collisions', mean_collisions, self.episode)
 
 		# Save the final policy #
 		self.save_model(name='Final_Policy.pth')
@@ -691,7 +693,7 @@ class MultiAgentDuelingDQNAgent:
 
 		torch.save(self.dqn.state_dict(), self.writer.log_dir + '/' + name)
 
-	def evaluate_env(self, eval_episodes, render=False):
+	def evaluate_agents(self, eval_episodes, render=False):
 		""" Evaluate the agent on the environment for a given number of episodes with a deterministic policy """
 
 		self.dqn.eval()
@@ -699,7 +701,7 @@ class MultiAgentDuelingDQNAgent:
 		total_reward_information = 0
 		total_reward_exploration = 0
 		total_length = 0
-		total_collissions = 0
+		total_collisions = 0
 		max_movements = self.env.distance_budget
 		max_coll_ant=self.env.max_collisions
 		self.env.max_collisions=np.inf
@@ -744,15 +746,14 @@ class MultiAgentDuelingDQNAgent:
 				rewards = np.asarray(list(reward.values()))
 				total_reward_information += np.sum(rewards[:,0])
 				total_reward_exploration += np.sum(rewards[:,1])
-			total_collissions += self.env.fleet.fleet_collisions
+			total_collisions += self.env.fleet.fleet_collisions
 		total_reward += total_reward_exploration + total_reward_information
 		self.dqn.train()
 		self.env.max_collisions = max_coll_ant
 		self.epsilon = epsilon
 		# Return the average reward, average length
 
-		self.writer.add_scalar('test/fleet_collisions', total_collissions/ eval_episodes, self.episode)
-		return total_reward_information / eval_episodes, total_reward_exploration / eval_episodes, total_reward / eval_episodes, total_length / eval_episodes
+		return total_reward_information / eval_episodes, total_reward_exploration / eval_episodes, total_reward / eval_episodes, total_length / eval_episodes, total_collisions/eval_episodes
 
 	def write_experiment_config(self):
 		""" Write experiment and environment variables in a json file """
@@ -774,6 +775,7 @@ class MultiAgentDuelingDQNAgent:
 			"nu": self.nu,
 			"nu_intervals": self.nu_intervals,
             "nettype": self.nettype,
+            "archtype": self.archtype,
             "masked_actions": self.masked_actions
 		}
 

@@ -58,7 +58,7 @@ for archtype in archtypes:
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_10_nettype_'+nettype+'_archtype_'+archtype,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_11_nettype_'+nettype+'_archtype_'+archtype,
                                         use_nu=True,
                                         nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,

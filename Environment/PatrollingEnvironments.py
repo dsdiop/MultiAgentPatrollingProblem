@@ -185,7 +185,7 @@ class DiscreteFleet:
 	def move(self, fleet_actions):
 
 		# Check if there are collisions between vehicles #
-		self_colliding_mask = self.check_fleet_collision_within(fleet_actions)
+		self_colliding_mask = self.check_fleet_collision_within(fleet_actions) + True ## We add True so these collisions doesn't affect
 		# Process the fleet actions and move the vehicles #
 		collision_array = {k: self.vehicles[k].move(fleet_actions[k], valid=valid) for k, valid in zip(list(fleet_actions.keys()), self_colliding_mask)}
 		# Update vector with agent positions #
@@ -681,6 +681,7 @@ class MultiAgentPatrolling(gym.Env):
 			'fleet_initial_positions': self.initial_positions.tolist(),
 			'distance_budget': self.distance_budget,
 			'detection_length': self.detection_length,
+			'movement_length': self.movement_length,
 			'max_number_of_movements': self.max_number_of_movements,
 			'max_number_of_colissions': self.max_collisions,
 			'forgetting_factor': self.forget_factor,
@@ -690,7 +691,10 @@ class MultiAgentPatrolling(gym.Env):
 			'optimal_connection_distance': self.optimal_connection_distance,
 			'max_connection_distance': self.max_connection_distance,
 			'ground_truth': self.ground_truth_type,
-			'reward_weights': self.reward_weights
+			'reward_weights': self.reward_weights,
+			'frame_stacking': self.frame_stacking,
+			'state_index_stacking': self.state_index_stacking
+
 		}
 
 		with open(path + '/environment_config.json', 'w') as f:
@@ -701,7 +705,7 @@ class MultiAgentPatrolling(gym.Env):
 if __name__ == '__main__':
 
 
-	sc_map = np.genfromtxt('Maps/example_map.csv', delimiter=',')
+	sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
 
 	N = 4
 	initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])[:N, :]
@@ -744,10 +748,8 @@ if __name__ == '__main__':
 
 			if agent_mask[action[idx]]:
 				action[idx] = np.random.choice(np.arange(8), p=(1-agent_mask)/np.sum((1-agent_mask)))
-
-
 		s, r, done, _ = env.step(action)
-
+		#print(env.fleet.fleet_collisions )
 		env.render()
 
 		R.append(list(r.values()))
