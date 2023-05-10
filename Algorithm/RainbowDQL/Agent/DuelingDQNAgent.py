@@ -724,7 +724,12 @@ class MultiAgentDuelingDQNAgent:
 											 p3=self.nu_intervals[2],
 											 p4=self.nu_intervals[3])
 				# Select the action using the current policy
-				actions = self.select_action(state)
+				
+				if not self.masked_actions:
+					actions = self.select_action(state)
+				else:
+					actions = self.select_masked_action(states=state, positions=self.env.fleet.get_positions())
+
 
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
 
