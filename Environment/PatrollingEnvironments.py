@@ -185,7 +185,7 @@ class DiscreteFleet:
 	def move(self, fleet_actions):
 
 		# Check if there are collisions between vehicles #
-		self_colliding_mask = self.check_fleet_collision_within(fleet_actions) + True ## We add True so these collisions doesn't affect
+		self_colliding_mask = self.check_fleet_collision_within(fleet_actions)  ## We should add True so these collisions doesn't affect
 		# Process the fleet actions and move the vehicles #
 		collision_array = {k: self.vehicles[k].move(fleet_actions[k], valid=valid) for k, valid in zip(list(fleet_actions.keys()), self_colliding_mask)}
 		# Update vector with agent positions #
@@ -383,9 +383,8 @@ class MultiAgentPatrolling(gym.Env):
 		self.action_space = gym.spaces.Discrete(8)
 
 		assert frame_stacking >= 0, "frame_stacking must be >= 0"
-		self.frame_stacking = frame_stacking
 		self.state_index_stacking = state_index_stacking
-
+		self.num_of_frame_stacking = frame_stacking
 		if frame_stacking != 0:
 			self.frame_stacking = MultiAgentTimeStackingMemory(n_agents = self.number_of_agents,
 			 													n_timesteps = frame_stacking - 1, 
@@ -467,7 +466,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		# State 0 -> Known boundaries
 		if self.obstacles:
-			obstacle_map = self.scenario_map - np.logical_and(self.inside_obstacles_map, self.fleet.historic_visited_mask)
+			obstacle_map = self.scenario_map - self.inside_obstacles_map
 		else:
 			obstacle_map = self.scenario_map
 
@@ -692,7 +691,7 @@ class MultiAgentPatrolling(gym.Env):
 			'max_connection_distance': self.max_connection_distance,
 			'ground_truth': self.ground_truth_type,
 			'reward_weights': self.reward_weights,
-			'frame_stacking': self.frame_stacking,
+			'frame_stacking': self.num_of_frame_stacking,
 			'state_index_stacking': self.state_index_stacking
 
 		}
@@ -749,7 +748,7 @@ if __name__ == '__main__':
 			if agent_mask[action[idx]]:
 				action[idx] = np.random.choice(np.arange(8), p=(1-agent_mask)/np.sum((1-agent_mask)))
 		s, r, done, _ = env.step(action)
-		#print(env.fleet.fleet_collisions )
+		print(env.fleet.fleet_collisions )
 		env.render()
 
 		R.append(list(r.values()))

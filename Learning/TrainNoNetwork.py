@@ -19,8 +19,9 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 
 #frame_stack
 nettype = '0'
-archtypes = ['v2', 'v1']
-for archtype in archtypes:
+archtypes = ['v2', 'v1','v1','v2']
+frame_stackings = [1,1,2,2]
+for frame_stacking, archtype in zip(frame_stackings, archtypes):
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -34,8 +35,8 @@ for archtype in archtypes:
                             attrition=0.1,
                             networked_agents=False,
                             ground_truth_type='algae_bloom',
-                            obstacles=True,
-                            frame_stacking=1,
+                            obstacles=False,
+                            frame_stacking=frame_stacking,
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
@@ -58,11 +59,11 @@ for archtype in archtypes:
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_11_nettype_'+nettype+'_archtype_'+archtype,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_12_nettype_'+nettype+'_archtype_'+archtype+'_nu_escalon',
                                         use_nu=True,
-                                        nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+                                        nu_intervals=[[0., 1], [0.40, 1], [0.40, 0.], [1., 0.]],
                                         eval_episodes=10,
                                         eval_every=1000)
 
-    multiagent.train(episodes=20000)
+    multiagent.train(episodes=15000)
     torch.cuda.empty_cache()
