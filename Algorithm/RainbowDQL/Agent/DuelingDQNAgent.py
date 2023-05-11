@@ -42,6 +42,7 @@ class MultiAgentDuelingDQNAgent:
             nettype: str='0',
 			archtype: str='v1',
 			device='cuda:1',
+			weighted: bool=False,
 			# Distributional parameters #
 			distributional: bool = False,
 			num_atoms: int = 51,
@@ -108,6 +109,7 @@ class MultiAgentDuelingDQNAgent:
 		self.train_every = train_every
 		self.nettype = nettype
 		self.archtype = archtype
+		self.weighted = weighted
 		self.masked_actions = masked_actions
         
 		self.use_nu = use_nu
@@ -465,7 +467,7 @@ class MultiAgentDuelingDQNAgent:
 					                   reward[agent_id],
 					                   next_state[agent_id],
 					                   done[agent_id],
-					                   {}]
+					                   {'nu': self.nu}]
 
 					self.memory.store(*self.transition)
 
@@ -552,6 +554,8 @@ class MultiAgentDuelingDQNAgent:
 		#action = torch.LongTensor(samples["acts"]).to(device)
 		#reward = torch.FloatTensor(samples["rews"]).to(device)
 		done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
+		nu_ = np.fromiter((d['nu'] for d in samples["info"]), dtype=int)
+		nu_ = torch.FloatTensor(nu_.reshape(-1, 1)).to(device)
 
 		# G_t   = r + gamma * v(s_{t+1})  if state != Terminal
 		#       = r                       otherwise
@@ -581,11 +585,17 @@ class MultiAgentDuelingDQNAgent:
 					target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
 
 				# calculate element-wise dqn loss
+				#
 				if elementwise_loss is not None:
-					elementwise_loss += F.mse_loss(curr_q_value, target, reduction="none")
+					if self.weighted:
+						elementwise_loss_ = nu_*F.mse_loss(curr_q_value, target, reduction="none")
+					else:
+						elementwise_loss_ = F.mse_loss(curr_q_value, target, reduction="none")
+					elementwise_loss += elementwise_loss_
+					breakpoint()
 				else:
 					elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
-
+		
 		return elementwise_loss
 
 

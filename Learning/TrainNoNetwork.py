@@ -20,8 +20,9 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 #frame_stack
 nettype = '0'
 archtypes = ['v2', 'v1','v1','v2']
-frame_stackings = [1,1,2,2]
-for frame_stacking, archtype in zip(frame_stackings, archtypes):
+nu_intervals_vec = [[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],[[0., 1], [0.40, 1], [0.40, 0.], [1., 0.]]] 
+weighted_vec = [True,True,False,False]
+for weighted, nu_intervals, archtype in zip(weighted_vec, nu_intervals_vec, archtypes):
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -36,7 +37,7 @@ for frame_stacking, archtype in zip(frame_stackings, archtypes):
                             networked_agents=False,
                             ground_truth_type='algae_bloom',
                             obstacles=False,
-                            frame_stacking=frame_stacking,
+                            frame_stacking=1,
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
@@ -56,12 +57,13 @@ for frame_stacking, archtype in zip(frame_stackings, archtypes):
                                         noisy=False,
                                         nettype=nettype,
                                         archtype=archtype,
+                                        weighted=weighted,
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_12_nettype_'+nettype+'_archtype_'+archtype+'_nu_escalon',
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_12_nettype_'+nettype+'_archtype_'+archtype+'_weighted_'+str(weighted),
                                         use_nu=True,
-                                        nu_intervals=[[0., 1], [0.40, 1], [0.40, 0.], [1., 0.]],
+                                        nu_intervals=nu_intervals,
                                         eval_episodes=10,
                                         eval_every=1000)
 
