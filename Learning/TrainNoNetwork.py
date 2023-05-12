@@ -19,13 +19,23 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 
 #frame_stack
 nettype = '0'
-archtypes = ['v2', 'v1','v1','v2']
-nu_intervals_vec = [[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],[[0., 1], [0.40, 1], [0.40, 0.], [1., 0.]]] 
-weighted_vec = [True,True,False,False]
-for weighted, nu_intervals, archtype in zip(weighted_vec, nu_intervals_vec, archtypes):
+archtypes = ['v1','v1','v1','v2','v1',]
+nu_intervals_vec = [[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]], 
+                    [[0., 1], [0.15, 1], [0.30, 0.], [1., 0.]],
+                    [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+                    [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+                    [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]]
+                    ] 
+distance_budgets = [200,400,200,200,200]
+ground_truth_types = ['algae_bloom','algae_bloom','algae_bloom','algae_bloom','shekel']
+weighted_vec = [True,False,False,False,False]
+use_dwa_vec = [False,False,True,True,False]
+i=0
+for weighted, nu_intervals, archtype, db, gt, dwa in zip(weighted_vec, nu_intervals_vec, archtypes, distance_budgets,ground_truth_types,use_dwa_vec):
+    i = i + 1
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
-                            distance_budget=200,
+                            distance_budget=db,
                             number_of_vehicles=N,
                             seed=0,
                             miopic=True,
@@ -35,7 +45,7 @@ for weighted, nu_intervals, archtype in zip(weighted_vec, nu_intervals_vec, arch
                             forget_factor=0.5,
                             attrition=0.1,
                             networked_agents=False,
-                            ground_truth_type='algae_bloom',
+                            ground_truth_type=gt,
                             obstacles=False,
                             frame_stacking=1,
                             state_index_stacking=(2, 3, 4),
@@ -61,11 +71,12 @@ for weighted, nu_intervals, archtype in zip(weighted_vec, nu_intervals_vec, arch
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_12_nettype_'+nettype+'_archtype_'+archtype+'_weighted_'+str(weighted),
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_13_'+'_'+archtype+'_wei_'+str(weighted)+'_gt_'+gt+'_db_'+str(db)+'_i'+str(i),
                                         use_nu=True,
                                         nu_intervals=nu_intervals,
                                         eval_episodes=10,
-                                        eval_every=1000)
+                                        eval_every=1000,
+                                        use_dwa=dwa)
 
-    multiagent.train(episodes=15000)
+    multiagent.train(episodes=20000)
     torch.cuda.empty_cache()

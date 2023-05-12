@@ -16,6 +16,7 @@ from tqdm import trange
 from copy import copy
 import json
 import os
+from collections import deque
 
 class MultiAgentDuelingDQNAgent:
 
@@ -58,7 +59,8 @@ class MultiAgentDuelingDQNAgent:
 			eval_every=None,
 			eval_episodes=1000,
 			# Masked actions
-			masked_actions= True
+			masked_actions= True,
+			use_dwa= False
 	):
 		"""
 
@@ -142,6 +144,11 @@ class MultiAgentDuelingDQNAgent:
 		elif self.use_nu:
 			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
 			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
+			self.loss_expl = deque(maxlen=3)
+			self.loss_inf = deque(maxlen=3)
+			self.use_dwa = use_dwa
+			if use_dwa:
+				self.index=0
 		else:
 			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
 			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
@@ -288,8 +295,22 @@ class MultiAgentDuelingDQNAgent:
 		indices = samples["indices"]
 
 		# PER: importance sampling before average
-		elementwise_loss = self._compute_ddqn_multihead_loss(samples)
-		loss = torch.mean(elementwise_loss * weights)
+		if self.use_nu:
+			elementwise_loss= self._compute_ddqn_multihead_loss(samples)
+			#self.loss_inf=torch.cat((self.loss_inf[1:], elementwise_loss[0]))
+			#self.loss_expl=torch.cat((self.loss_expl[1:], elementwise_loss[1]))
+			self.loss_inf.append(torch.mean(elementwise_loss[0] * weights))
+			self.loss_expl.append(torch.mean(elementwise_loss[1] * weights))
+			if self.use_dwa:
+				with torch.no_grad():
+					self.compute_dwa()
+				loss = self.lambda_weight[0]*self.loss_inf[-1] + self.lambda_weight[1]*self.loss_expl[-1]
+			else:
+				loss = self.loss_inf[-1] + self.loss_expl[-1]
+			elementwise_loss = elementwise_loss[0] + elementwise_loss[1]
+		else:
+			elementwise_loss = self._compute_dqn_loss(samples)
+			loss = torch.mean(elementwise_loss * weights)
 
 		# Compute gradients and apply them
 		self.optimizer.zero_grad()
@@ -300,7 +321,7 @@ class MultiAgentDuelingDQNAgent:
 		loss_for_prior = elementwise_loss.detach().cpu().numpy()
 		new_priorities = loss_for_prior + self.prior_eps
 		self.memory.update_priorities(indices, new_priorities)
-
+		
 		# Sample new noisy distribution
 		if self.noisy:
 			self.dqn.reset_noise()
@@ -402,7 +423,7 @@ class MultiAgentDuelingDQNAgent:
 			self.writer = SummaryWriter(log_dir=self.logdir, filename_suffix=self.experiment_name)
 			self.write_experiment_config()
 			self.env.save_environment_configuration(self.logdir if self.logdir is not None else './')
-
+		
 		# Agent in training mode #
 		self.is_eval = False
 		# Reset episode count #
@@ -435,6 +456,7 @@ class MultiAgentDuelingDQNAgent:
 			                                   p_fin=self.epsilon_interval[1],
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
+   			
 			# Run an episode #
 			while not all(done.values()):
 
@@ -518,7 +540,7 @@ class MultiAgentDuelingDQNAgent:
 
 					# Update model parameters by backprop-bootstrapping #
 					if steps % self.train_every == 0:
-
+						
 						loss = self.update_model()
 						# Append loss #
 						losses.append(loss)
@@ -541,10 +563,25 @@ class MultiAgentDuelingDQNAgent:
 					self.writer.add_scalar('test/accumulated_reward', mean_reward, self.episode)
 					self.writer.add_scalar('test/accumulated_length', mean_length, self.episode)
 					self.writer.add_scalar('test/fleet_collisions', mean_collisions, self.episode)
+     
+			
 
 		# Save the final policy #
 		self.save_model(name='Final_Policy.pth')
-
+	def compute_dwa(self):
+		# apply Dynamic Weight Average
+		T=2
+		if self.index == 0 or self.index == 1:
+			self.lambda_weight= [1.0, 1.0]
+		else:
+			n_tasks = 2
+			w = []
+			w.append(self.loss_inf[1] / self.loss_inf[0])
+			w.append(self.loss_expl[1] / self.loss_expl[0])
+			self.lambda_weight[0] = n_tasks * np.exp(w[0] / T) / (np.exp(w[0] / T) + np.exp(w[1]/ T))
+			self.lambda_weight[1] = n_tasks * np.exp(w[1] / T) / (np.exp(w[0] / T) + np.exp(w[1]/ T))
+		self.index += 1
+			
 	def _compute_ddqn_multihead_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
 
 		"""Return dqn loss."""
@@ -564,7 +601,7 @@ class MultiAgentDuelingDQNAgent:
 			next_maxq_values = self.dqn(next_state)
 			next_maxq_values = next_maxq_values.view((-1, num_of_rewards, self.action_dim))
 			next_max_action_values = next_maxq_values.max(dim=2, keepdim=True)[1]
-		elementwise_loss = None
+		elementwise_loss = [0, 0]
 		samples_aux = copy(samples)
 
 		if not self.distributional:
@@ -586,15 +623,11 @@ class MultiAgentDuelingDQNAgent:
 
 				# calculate element-wise dqn loss
 				#
-				if elementwise_loss is not None:
-					if self.weighted:
-						elementwise_loss_ = nu_*F.mse_loss(curr_q_value, target, reduction="none")
-					else:
-						elementwise_loss_ = F.mse_loss(curr_q_value, target, reduction="none")
-					elementwise_loss += elementwise_loss_
-					breakpoint()
+				
+				if self.weighted and i == 1:
+					elementwise_loss[i]= nu_*F.mse_loss(curr_q_value, target, reduction="none")
 				else:
-					elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
+					elementwise_loss[i] =  F.mse_loss(curr_q_value, target, reduction="none")
 		
 		return elementwise_loss
 

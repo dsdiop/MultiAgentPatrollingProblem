@@ -724,7 +724,7 @@ if __name__ == '__main__':
 							   forget_factor=0.5,
 							   attrition=0.1,
 							   networked_agents=False,
-							   ground_truth_type='algae_bloom',
+							   ground_truth_type='shekel',
 							   obstacles=True,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
