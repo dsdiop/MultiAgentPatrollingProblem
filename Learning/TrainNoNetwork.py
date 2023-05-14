@@ -19,18 +19,18 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 
 #frame_stack
 nettype = '0'
-archtypes = ['v1','v1','v1','v2','v1',]
-nu_intervals_vec = [[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]], 
-                    [[0., 1], [0.15, 1], [0.30, 0.], [1., 0.]],
+archtypes = ['v1','v2','v1','v2']
+nu_intervals_vec = [
+                    [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                     [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                     [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                     [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]]
                     ] 
-distance_budgets = [200,400,200,200,200]
-ground_truth_types = ['algae_bloom','algae_bloom','algae_bloom','algae_bloom','shekel']
-weighted_vec = [True,False,False,False,False]
-use_dwa_vec = [False,False,True,True,False]
-i=0
+distance_budgets = [200,200,200,200]
+ground_truth_types = ['algae_bloom','algae_bloom','shekel','shekel']
+weighted_vec = [False,False,False,False]
+use_dwa_vec = [True,True,False,False]
+i=2
 for weighted, nu_intervals, archtype, db, gt, dwa in zip(weighted_vec, nu_intervals_vec, archtypes, distance_budgets,ground_truth_types,use_dwa_vec):
     i = i + 1
     env = MultiAgentPatrolling(scenario_map=sc_map,

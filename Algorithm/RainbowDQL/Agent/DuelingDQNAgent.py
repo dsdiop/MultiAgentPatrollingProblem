@@ -578,8 +578,8 @@ class MultiAgentDuelingDQNAgent:
 			w = []
 			w.append(self.loss_inf[1] / self.loss_inf[0])
 			w.append(self.loss_expl[1] / self.loss_expl[0])
-			self.lambda_weight[0] = n_tasks * np.exp(w[0] / T) / (np.exp(w[0] / T) + np.exp(w[1]/ T))
-			self.lambda_weight[1] = n_tasks * np.exp(w[1] / T) / (np.exp(w[0] / T) + np.exp(w[1]/ T))
+			self.lambda_weight[0] = n_tasks * torch.exp(w[0] / T) / (torch.exp(w[0] / T) + torch.exp(w[1]/ T))
+			self.lambda_weight[1] = n_tasks * torch.exp(w[1] / T) / (torch.exp(w[0] / T) + torch.exp(w[1]/ T))
 		self.index += 1
 			
 	def _compute_ddqn_multihead_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
