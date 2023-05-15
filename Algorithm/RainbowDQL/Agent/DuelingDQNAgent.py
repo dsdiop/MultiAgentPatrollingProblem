@@ -17,6 +17,7 @@ from copy import copy
 import json
 import os
 from collections import deque
+from Algorithm.RainbowDQL.Agent.methods.weight_methods import WeightMethods
 
 class MultiAgentDuelingDQNAgent:
 
@@ -60,7 +61,9 @@ class MultiAgentDuelingDQNAgent:
 			eval_episodes=1000,
 			# Masked actions
 			masked_actions= True,
-			use_dwa= False
+			use_dwa= False,
+      weighting_method=None,
+      weight_methods_parameters = None
 	):
 		"""
 
@@ -149,6 +152,9 @@ class MultiAgentDuelingDQNAgent:
 			self.use_dwa = use_dwa
 			if use_dwa:
 				self.index=0
+			self.weighting_method = weighting_method
+			if weighting_method is not None:
+				self.weighting_method = WeightMethods(weighting_method, n_tasks=2, device=self.device, **weight_methods_parameters)
 		else:
 			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
 			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
@@ -294,27 +300,40 @@ class MultiAgentDuelingDQNAgent:
 		weights = torch.FloatTensor(samples["weights"].reshape(-1, 1)).to(self.device)
 		indices = samples["indices"]
 
+		# Compute gradients and apply them
+		self.optimizer.zero_grad()
 		# PER: importance sampling before average
 		if self.use_nu:
 			elementwise_loss= self._compute_ddqn_multihead_loss(samples)
 			#self.loss_inf=torch.cat((self.loss_inf[1:], elementwise_loss[0]))
 			#self.loss_expl=torch.cat((self.loss_expl[1:], elementwise_loss[1]))
-			self.loss_inf.append(torch.mean(elementwise_loss[0] * weights))
-			self.loss_expl.append(torch.mean(elementwise_loss[1] * weights))
-			if self.use_dwa:
+			#self.loss_inf.append(torch.mean(elementwise_loss[0] * weights))
+			#self.loss_expl.append(torch.mean(elementwise_loss[1] * weights))
+			if self.weighting_method is not None:
+				"""
 				with torch.no_grad():
 					self.compute_dwa()
 				loss = self.lambda_weight[0]*self.loss_inf[-1] + self.lambda_weight[1]*self.loss_expl[-1]
+        """
+				
+				losses = torch.cat([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
+				loss, extra_outputs = self.weighting_method.backward(
+                losses=losses,
+                shared_parameters=list(self.dqn.shared_parameters()),
+                task_specific_parameters=list(self.dqn.task_specific_parameters()),
+                last_shared_parameters=None,
+                representation=None
+            )
 			else:
-				loss = self.loss_inf[-1] + self.loss_expl[-1]
+				loss = sum([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
+				loss.backward()
 			elementwise_loss = elementwise_loss[0] + elementwise_loss[1]
 		else:
 			elementwise_loss = self._compute_dqn_loss(samples)
 			loss = torch.mean(elementwise_loss * weights)
+			loss.backward()
 
-		# Compute gradients and apply them
-		self.optimizer.zero_grad()
-		loss.backward()
+
 		self.optimizer.step()
 
 		# PER: update priorities

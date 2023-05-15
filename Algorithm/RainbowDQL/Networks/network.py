@@ -16,7 +16,7 @@ class Network(nn.Module):
 		"""Initialization."""
 		super(Network, self).__init__()
 
-		self.support = support
+		self.support = support 
 		self.out_dim = out_dim
 		self.atom_size = atom_size
 
@@ -311,4 +311,9 @@ class DQFDuelingVisualNetwork(nn.Module):
 		q2 = value2 + advantage2 - advantage2.mean(dim=-1, keepdim=True)
 		return torch.cat((q1, q2), 1)
 
+	def shared_parameters(self):
+		return [i for i in self.feature_layer.parameters()]
+
+	def task_specific_parameters(self):
+		return [i for j,i in self.named_parameters() if 'feature_layer' not in j]
 
