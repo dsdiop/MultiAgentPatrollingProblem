@@ -457,7 +457,7 @@ class MultiAgentPatrolling(gym.Env):
 	def update_information_importance(self):
 		""" Applied the attrition term """
 		self.importance_matrix = np.clip(
-			self.importance_matrix - self.attrition * self.gt.read() * self.fleet.collective_mask, 0, 999999)
+			self.importance_matrix - self.attrition * self.gt.read() * self.fleet.collective_mask, 0.01, 999999)####### Clipped at 0.01 so the idleness affects everywhere
 
 	def update_state(self):
 		""" Update the state for every vehicle """
@@ -724,7 +724,7 @@ if __name__ == '__main__':
 							   forget_factor=0.5,
 							   attrition=0.1,
 							   networked_agents=False,
-							   ground_truth_type='shekel',
+							   ground_truth_type='algae_bloom',
 							   obstacles=True,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
