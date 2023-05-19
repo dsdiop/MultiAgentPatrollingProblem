@@ -56,7 +56,7 @@ def EvaluateMultiagent(number_of_agents: int,
         
     env = MultiAgentPatrolling(scenario_map=sc_map,
                                 fleet_initial_positions=environment_config['fleet_initial_positions'],
-                                distance_budget=400,#environment_config['distance_budget'],
+                                distance_budget=environment_config['distance_budget'],
                                 number_of_vehicles=environment_config['number_of_agents'],
                                 seed=seed,
                                 miopic=environment_config['miopic'],
@@ -147,7 +147,7 @@ def EvaluateMultiagent(number_of_agents: int,
         state = env.reset()
         recompensa_exp = []
         recompensa_inf = []
-        if render:
+        if render and run==0:
             env.render()
         done = {agent_id: False for agent_id in range(env.number_of_agents)}
 
@@ -174,7 +174,7 @@ def EvaluateMultiagent(number_of_agents: int,
                                         p3=multiagent.nu_intervals[2],
                                         p4=multiagent.nu_intervals[3])
                 
-                print(multiagent.nu)
+                #print(multiagent.nu)
             # Select the action using the current policy
             
             if not multiagent.masked_actions:
@@ -187,8 +187,8 @@ def EvaluateMultiagent(number_of_agents: int,
 
             # Process the agent step #
             next_state, reward, done = multiagent.step(actions)
-            print(reward)
-            if render:
+            #print(reward)
+            if render and run==0:
                 env.render()
 
             # Update the state #
@@ -205,12 +205,12 @@ def EvaluateMultiagent(number_of_agents: int,
             metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
             for veh_id, veh in enumerate(env.fleet.vehicles):
                 paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
-        fig, ax = plt.subplots()
+        """fig, ax = plt.subplots()
         ax.plot(recompensa_exp, label='Exploration reward')
         ax.legend()
         ax.plot(recompensa_inf, label='Information reward')
         ax.legend()  
-        plt.show()       
+        plt.show()  """     
     metrics.register_experiment()
     paths.register_experiment()
 
@@ -232,7 +232,7 @@ if __name__ == '__main__':
     visitable_locations = np.vstack(np.where(sc_map != 0)).T
     random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
     initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
-    num_of_eval_episodes = 4
+    num_of_eval_episodes = 100
     policy_names = [ 'Experimento_serv_0_nettype_0',
                      'Experimento_serv_0_nettype_1',
                      'Experimento_serv_1_lr2_nettype_0',
@@ -268,11 +268,11 @@ if __name__ == '__main__':
                      'Experimento_serv_14__net_0_infclipped',
                      'Experimento_serv_14__net_0_mgda']
     for i,policy_name in enumerate(policy_names):
-        if '__' not in policy_name:
-            continue
+        
+        print(policy_name)
         policy_path = f'../DameLearnings/runs/Vehicles_4/{policy_name}/'
         policy_type = 'Final_Policy.pth'
-        seed = 177
+        seed = 17
         EvaluateMultiagent(number_of_agents=N,
                         sc_map=sc_map,
                         visitable_locations=visitable_locations,
@@ -282,5 +282,5 @@ if __name__ == '__main__':
                         policy_type=policy_type,
                         seed=seed,
                         policy_name=policy_name,
-                        render = True
+                        render = False
                         )
