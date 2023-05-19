@@ -152,7 +152,8 @@ class MultiAgentDuelingDQNAgent:
 			self.use_dwa = use_dwa
 			if use_dwa:
 				self.index=0
-			self.weighting_method = weighting_method
+			self.weighting_method_name = weighting_method
+			self.weighting_method = None
 			if weighting_method is not None:
 				self.weighting_method = WeightMethods(weighting_method, n_tasks=2, device=self.device, **weight_methods_parameters)
 		else:
@@ -324,6 +325,11 @@ class MultiAgentDuelingDQNAgent:
                 last_shared_parameters=None,
                 representation=None
             )
+				if self.weighting_method_name=='cagrad' or self.weighting_method_name=='pcgrad':
+					loss = sum([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
+		
+				self.writer.add_scalar('pruebas/loss_inf', torch.mean(elementwise_loss[0] * weights).detach().cpu(), self.episode)
+				self.writer.add_scalar('pruebas/loss_exp', torch.mean(elementwise_loss[1] * weights).detach().cpu(), self.episode)
 			else:
 				loss = sum([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
 				loss.backward()

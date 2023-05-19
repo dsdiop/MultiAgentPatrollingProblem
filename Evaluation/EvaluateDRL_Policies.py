@@ -233,11 +233,45 @@ if __name__ == '__main__':
     random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
     initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
     num_of_eval_episodes = 4
-    policy_names = ['Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5','Experimento_serv_10_nettype_0_archtype_v2','Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5','Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1','Experimento_serv_5_fstack2_nettype_0','Experimento_serv_7_bs64_nettype_3']
-    for policy_name in policy_names:
-        
+    policy_names = [ 'Experimento_serv_0_nettype_0',
+                     'Experimento_serv_0_nettype_1',
+                     'Experimento_serv_1_lr2_nettype_0',
+                     'Experimento_serv_2_nettype_0',
+                     'Experimento_serv_3_bs64_nettype_0',
+                     'Experimento_serv_3_bs256_nettype_0',
+                     'Experimento_serv_4_rewardv2_nettype_0',
+                     'Experimento_serv_5_fstack2_nettype_0',
+                     'Experimento_serv_6_bs64_nettype_2',
+                     'Experimento_serv_7_bs64_nettype_3',
+                     'Experimento_serv_7_bs64_nettype_4',
+                     'Experimento_serv_8_nettype_0_n_of_features_1024_archtype_v2',
+                     'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
+                     'Experimento_serv_9_nettype_0_archtype_v1',
+                     'Experimento_serv_9_nettype_0_archtype_v2',
+                     'Experimento_serv_10_nettype_0_archtype_v1',
+                     'Experimento_serv_10_nettype_0_archtype_v2',
+                     'Experimento_serv_11_nettype_0_archtype_v1',
+                     'Experimento_serv_11_nettype_0_archtype_v2',
+                     'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
+                     'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
+                     'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
+                     'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
+                     'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
+                     'Experimento_serv_14__net_0_nashmtl',
+                     'Experimento_serv_14__net_0_nashmtl_100',
+                     'Experimento_serv_14__net_0_pcgrad', 
+                     'Experimento_serv_14__net_0_rlw',
+                     'Experimento_serv_14__net_0_scaleinvls',
+                     'Experimento_serv_14__net_0_cagrad',
+                     'Experimento_serv_14__net_0_escalon',
+                     'Experimento_serv_14__net_0_imtl',
+                     'Experimento_serv_14__net_0_infclipped',
+                     'Experimento_serv_14__net_0_mgda']
+    for i,policy_name in enumerate(policy_names):
+        if '__' not in policy_name:
+            continue
         policy_path = f'../DameLearnings/runs/Vehicles_4/{policy_name}/'
-        policy_type = 'BestPolicy.pth'
+        policy_type = 'Final_Policy.pth'
         seed = 177
         EvaluateMultiagent(number_of_agents=N,
                         sc_map=sc_map,

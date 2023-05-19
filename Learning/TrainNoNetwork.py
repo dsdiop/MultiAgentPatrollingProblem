@@ -20,8 +20,10 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 #frame_stack
 nettype = '0'
 
-weight = ['nashmtl',None, None]
-for i,ww in enumerate(weight):
+
+weight = ['cagrad', 'pcgrad', 'scaleinvls','rlw']
+wms = [dict(c=0.5),dict(),dict(),dict()]
+for ww,wm in zip(weight,wms):
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -40,14 +42,6 @@ for i,ww in enumerate(weight):
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
-nuin = [[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]]
-if i==0:
-    cc = 'nashmtl'
-elif i==1:
-    cc = 'infclipped'
-elif i==2:
-    nuin = [[0., 1], [0.30, 1], [0.30, 0.], [1., 0.]]
-    cc = 'escalon'
     
     multiagent = MultiAgentDuelingDQNAgent(env=env,
                                         memory_size=int(1E6),
@@ -64,20 +58,19 @@ elif i==2:
                                         noisy=False,
                                         nettype='0',
                                         archtype='v1',
+                                        device='cuda:1',
                                         weighted=False,
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_14_'+'_net_'+nettype+'_'+cc,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_14_'+'_net_'+nettype+'_'+ww,
                                         use_nu=True,
-                                        nu_intervals=nuin,
+                                        nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,
                                         eval_every=1000,
                                         use_dwa=False,
                                         weighting_method=ww,
-                                        weight_methods_parameters=dict(
-                                        update_weights_every=2,
-                                        optim_niter=20)
+                                        weight_methods_parameters=wm
                                         )
 
     multiagent.train(episodes=20000)
