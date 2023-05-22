@@ -18,12 +18,18 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 # initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 
 #frame_stack
-nettype = '0'
+nettype = '4'
 
 
-weight = ['cagrad', 'pcgrad', 'scaleinvls','rlw']
-wms = [dict(c=0.5),dict(),dict(),dict()]
-for ww,wm in zip(weight,wms):
+weight = [None,None, 'nashmtl','mgda']
+wms = [dict(),dict(),dict(
+            update_weights_every=1,
+            optim_niter=100,
+        ),dict()]
+archtypes = ['v1','v2','v1','v1']
+for ww,wm,arch in zip(weight,wms,archtypes):
+    if ww is None:
+        wwstr = '_'
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -57,13 +63,13 @@ for ww,wm in zip(weight,wms):
                                         number_of_features=1024,
                                         noisy=False,
                                         nettype='0',
-                                        archtype='v1',
+                                        archtype=arch,
                                         device='cuda:1',
                                         weighted=False,
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_14_'+'_net_'+nettype+'_'+ww,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_15_'+'_net_'+nettype+'_'+wwstr+'_'+arch,
                                         use_nu=True,
                                         nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,

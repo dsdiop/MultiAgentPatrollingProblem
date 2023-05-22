@@ -1,8 +1,8 @@
 
 import sys
 import os
-
-sys.path.append('.')
+data_path = os.path.join(os.path.dirname(__file__), '..')
+sys.path.append(data_path)
 from Environment.PatrollingEnvironments import MultiAgentPatrolling
 from Algorithm.RainbowDQL.Agent.DuelingDQNAgent import MultiAgentDuelingDQNAgent
 import numpy as np
@@ -11,6 +11,8 @@ import torch
 from Utils.metrics_wrapper import MetricsDataCreator
 import json
 from tqdm import trange
+import pandas as pd 
+import seaborn as sns 
 
 def EvaluateMultiagent(number_of_agents: int,
                        sc_map,
@@ -226,61 +228,93 @@ def EvaluateMultiagent(number_of_agents: int,
 
 
 if __name__ == '__main__':
+    if False:
+        N = 4
+        sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+        visitable_locations = np.vstack(np.where(sc_map != 0)).T
+        random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
+        initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
+        num_of_eval_episodes = 100
+        policy_names = [ 'Experimento_serv_0_nettype_0',
+                        'Experimento_serv_0_nettype_1',
+                        'Experimento_serv_1_lr2_nettype_0',
+                        'Experimento_serv_2_nettype_0',
+                        'Experimento_serv_3_bs64_nettype_0',
+                        'Experimento_serv_3_bs256_nettype_0',
+                        'Experimento_serv_4_rewardv2_nettype_0',
+                        'Experimento_serv_5_fstack2_nettype_0',
+                        'Experimento_serv_6_bs64_nettype_2',
+                        'Experimento_serv_7_bs64_nettype_3',
+                        'Experimento_serv_7_bs64_nettype_4',
+                        'Experimento_serv_8_nettype_0_n_of_features_1024_archtype_v2',
+                        'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
+                        'Experimento_serv_9_nettype_0_archtype_v1',
+                        'Experimento_serv_9_nettype_0_archtype_v2',
+                        'Experimento_serv_10_nettype_0_archtype_v1',
+                        'Experimento_serv_10_nettype_0_archtype_v2',
+                        'Experimento_serv_11_nettype_0_archtype_v1',
+                        'Experimento_serv_11_nettype_0_archtype_v2',
+                        'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
+                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
+                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
+                        'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
+                        'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
+                        'Experimento_serv_14__net_0_nashmtl',
+                        'Experimento_serv_14__net_0_nashmtl_100',
+                        'Experimento_serv_14__net_0_pcgrad', 
+                        'Experimento_serv_14__net_0_rlw',
+                        'Experimento_serv_14__net_0_scaleinvls',
+                        'Experimento_serv_14__net_0_cagrad',
+                        'Experimento_serv_14__net_0_escalon',
+                        'Experimento_serv_14__net_0_imtl',
+                        'Experimento_serv_14__net_0_infclipped',
+                        'Experimento_serv_14__net_0_mgda']
+        for i,policy_name in enumerate(policy_names):
+            if 'Experimento_serv_7_bs64_nettype_4' not in policy_name:
+                continue
+            print(policy_name)
+            policy_path = f'../DameLearnings/runs/Vehicles_4/{policy_name}/'
+            policy_type = 'Final_Policy.pth'
+            seed = 17
+            EvaluateMultiagent(number_of_agents=N,
+                            sc_map=sc_map,
+                            visitable_locations=visitable_locations,
+                            initial_positions=initial_positions,
+                            num_of_eval_episodes=num_of_eval_episodes,
+                            policy_path=policy_path,
+                            policy_type=policy_type,
+                            seed=seed,
+                            policy_name=policy_name,
+                            render = True
+                            )
+    Finalpolicy = pd.read_csv(f'{data_path}/Evaluation/Results/BestPolicy_reward_explorationDRLResults.csv')
+    Accum_per_episode = Finalpolicy.groupby(['Policy Name','Run'])[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].tail(1) 
+    #print(Accum_per_episode.to_markdown(),'\n \n \n')
+    # merge the result dataframe with the original dataframe on the 'group' and 'value' columns
+    Finalpolicy_accum = Finalpolicy.loc[Accum_per_episode.index]
+    #print(Finalpolicy_accum.to_markdown(),'\n \n \n')
+    Mean_per_episode = Finalpolicy_accum.groupby('Policy Name')[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].mean()
+    print(Mean_per_episode.sort_values('Accumulated Reward Exploration',ascending=False).to_markdown(),'\n \n \n')
+    from pymoo.factory import get_performance_indicator
+    from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
+
+    # extract the two objective values from the dataframe into a numpy array
+    objs = - Mean_per_episode[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].to_numpy()
+
+
+    nds = NonDominatedSorting()
+    fronts = nds.do(objs)
+
+    # get the solutions in the first front (i.e., the Pareto front)
+    pf = objs[fronts[0]]
+
+    # print the Pareto front
+    print("Pareto front:")
+    print(pf)
+
     
-    N = 4
-    sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
-    visitable_locations = np.vstack(np.where(sc_map != 0)).T
-    random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
-    initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
-    num_of_eval_episodes = 100
-    policy_names = [ 'Experimento_serv_0_nettype_0',
-                     'Experimento_serv_0_nettype_1',
-                     'Experimento_serv_1_lr2_nettype_0',
-                     'Experimento_serv_2_nettype_0',
-                     'Experimento_serv_3_bs64_nettype_0',
-                     'Experimento_serv_3_bs256_nettype_0',
-                     'Experimento_serv_4_rewardv2_nettype_0',
-                     'Experimento_serv_5_fstack2_nettype_0',
-                     'Experimento_serv_6_bs64_nettype_2',
-                     'Experimento_serv_7_bs64_nettype_3',
-                     'Experimento_serv_7_bs64_nettype_4',
-                     'Experimento_serv_8_nettype_0_n_of_features_1024_archtype_v2',
-                     'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
-                     'Experimento_serv_9_nettype_0_archtype_v1',
-                     'Experimento_serv_9_nettype_0_archtype_v2',
-                     'Experimento_serv_10_nettype_0_archtype_v1',
-                     'Experimento_serv_10_nettype_0_archtype_v2',
-                     'Experimento_serv_11_nettype_0_archtype_v1',
-                     'Experimento_serv_11_nettype_0_archtype_v2',
-                     'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
-                     'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
-                     'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
-                     'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
-                     'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
-                     'Experimento_serv_14__net_0_nashmtl',
-                     'Experimento_serv_14__net_0_nashmtl_100',
-                     'Experimento_serv_14__net_0_pcgrad', 
-                     'Experimento_serv_14__net_0_rlw',
-                     'Experimento_serv_14__net_0_scaleinvls',
-                     'Experimento_serv_14__net_0_cagrad',
-                     'Experimento_serv_14__net_0_escalon',
-                     'Experimento_serv_14__net_0_imtl',
-                     'Experimento_serv_14__net_0_infclipped',
-                     'Experimento_serv_14__net_0_mgda']
-    for i,policy_name in enumerate(policy_names):
-        
-        print(policy_name)
-        policy_path = f'../DameLearnings/runs/Vehicles_4/{policy_name}/'
-        policy_type = 'Final_Policy.pth'
-        seed = 17
-        EvaluateMultiagent(number_of_agents=N,
-                        sc_map=sc_map,
-                        visitable_locations=visitable_locations,
-                        initial_positions=initial_positions,
-                        num_of_eval_episodes=num_of_eval_episodes,
-                        policy_path=policy_path,
-                        policy_type=policy_type,
-                        seed=seed,
-                        policy_name=policy_name,
-                        render = False
-                        )
+    sns.relplot(
+    data=Mean_per_episode.sort_values('Accumulated Reward Exploration',ascending=False), kind="scatter",
+    x="Accumulated Reward Exploration", y="Accumulated Reward Intensification", hue="Policy Name"
+)
+    plt.show()
