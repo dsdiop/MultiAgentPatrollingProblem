@@ -328,11 +328,11 @@ class MultiAgentDuelingDQNAgent:
 				if self.weighting_method_name=='cagrad' or self.weighting_method_name=='pcgrad':
 					loss = sum([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
 		
-				self.writer.add_scalar('pruebas/loss_inf', torch.mean(elementwise_loss[0] * weights).detach().cpu(), self.episode)
-				self.writer.add_scalar('pruebas/loss_exp', torch.mean(elementwise_loss[1] * weights).detach().cpu(), self.episode)
 			else:
 				loss = sum([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
 				loss.backward()
+			self.writer.add_scalar('pruebas/loss_inf', torch.mean(elementwise_loss[0] * weights).detach().cpu(), self.episode)
+			self.writer.add_scalar('pruebas/loss_exp', torch.mean(elementwise_loss[1] * weights).detach().cpu(), self.episode)
 			elementwise_loss = elementwise_loss[0] + elementwise_loss[1]
 		else:
 			elementwise_loss = self._compute_dqn_loss(samples)

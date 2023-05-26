@@ -24,12 +24,18 @@ nettype = '4'
 weight = [None,None, 'nashmtl','mgda']
 wms = [dict(),dict(),dict(
             update_weights_every=1,
-            optim_niter=100,
+            optim_niter=1000,
         ),dict()]
 archtypes = ['v1','v2','v1','v1']
+i=0
 for ww,wm,arch in zip(weight,wms,archtypes):
+    i+=1
     if ww is None:
-        wwstr = '_'
+        wwstr = '_x3c_'
+    else:
+        wwstr = ww
+    if i!=3:
+        continue
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -69,7 +75,7 @@ for ww,wm,arch in zip(weight,wms,archtypes):
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_15_'+'_net_'+nettype+'_'+wwstr+'_'+arch,
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_15_'+'_net_'+nettype+'_'+wwstr+'_1000',
                                         use_nu=True,
                                         nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,

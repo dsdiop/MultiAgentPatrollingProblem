@@ -104,6 +104,7 @@ def EvaluateMultiagent(number_of_agents: int,
                                         noisy=False,
                                         nettype=agent_config['nettype'],
                                         archtype=agent_config['archtype'],
+                                        device='cuda:1',
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
@@ -230,7 +231,7 @@ def EvaluateMultiagent(number_of_agents: int,
 if __name__ == '__main__':
     if False:
         N = 4
-        sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+        sc_map = np.genfromtxt(f'{data_path}/Environment/Maps/example_map.csv', delimiter=',')
         visitable_locations = np.vstack(np.where(sc_map != 0)).T
         random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
         initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
@@ -268,33 +269,57 @@ if __name__ == '__main__':
                         'Experimento_serv_14__net_0_escalon',
                         'Experimento_serv_14__net_0_imtl',
                         'Experimento_serv_14__net_0_infclipped',
-                        'Experimento_serv_14__net_0_mgda']
-        for i,policy_name in enumerate(policy_names):
-            if 'Experimento_serv_7_bs64_nettype_4' not in policy_name:
-                continue
-            print(policy_name)
-            policy_path = f'../DameLearnings/runs/Vehicles_4/{policy_name}/'
-            policy_type = 'Final_Policy.pth'
-            seed = 17
-            EvaluateMultiagent(number_of_agents=N,
-                            sc_map=sc_map,
-                            visitable_locations=visitable_locations,
-                            initial_positions=initial_positions,
-                            num_of_eval_episodes=num_of_eval_episodes,
-                            policy_path=policy_path,
-                            policy_type=policy_type,
-                            seed=seed,
-                            policy_name=policy_name,
-                            render = True
-                            )
-    Finalpolicy = pd.read_csv(f'{data_path}/Evaluation/Results/BestPolicy_reward_explorationDRLResults.csv')
+                        'Experimento_serv_14__net_0_mgda',
+                        'Experimento_serv_15__net_4___v1',
+                        'Experimento_serv_15__net_4___v2',
+                        'Experimento_serv_15__net_4__x3c__v1',
+                        'Experimento_serv_15__net_4_nashmtl_v1',
+                        'Experimento_serv_15__net_4_nashmtl_1000']
+        policy_types = ['Final_Policy','BestPolicy','BestPolicy_reward_information','BestPolicy_reward_exploration']
+        for policy_type in policy_types:
+            for i,policy_name in enumerate(policy_names):
+                if 'Experimento_serv_15__' not in policy_name:
+                    continue
+                print(policy_name + policy_type)
+                policy_path = f'{data_path}/../Learning/runs/Vehicles_4/{policy_name}/'
+                seed = 17
+                EvaluateMultiagent(number_of_agents=N,
+                                sc_map=sc_map,
+                                visitable_locations=visitable_locations,
+                                initial_positions=initial_positions,
+                                num_of_eval_episodes=num_of_eval_episodes,
+                                policy_path=policy_path,
+                                policy_type=policy_type+'.pth',
+                                seed=seed,
+                                policy_name=policy_name,
+                                metrics_directory= f'./{policy_type}',
+                                render = True
+                                )
+    
+    
+    
+        policy_types = ['Final_Policy','BestPolicy','BestPolicy_reward_information','BestPolicy_reward_exploration']
+        csvtype = ['DRL_paths.csv','DRLResults.csv']
+        for pol in policy_types:
+            for cc in csvtype:
+                df2 = pd.read_csv(f'{data_path}/../{pol}{cc}')
+                df1 = pd.read_csv(f'{data_path}/Evaluation/{pol}{cc}')
+
+                # Concatenate the two dataframes together
+                result = pd.concat([df1, df2])
+                import os  
+                os.makedirs(f'{data_path}/Evaluation/Results/', exist_ok=True)  
+                # Write the resulting dataframe to a new CSV file
+                result.to_csv(f'{data_path}/Evaluation/Results/{pol}{cc}', index=False)
+
+    Finalpolicy = pd.read_csv(f'{data_path}/Evaluation/Results/BestPolicyDRLResults.csv')
     Accum_per_episode = Finalpolicy.groupby(['Policy Name','Run'])[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].tail(1) 
     #print(Accum_per_episode.to_markdown(),'\n \n \n')
     # merge the result dataframe with the original dataframe on the 'group' and 'value' columns
     Finalpolicy_accum = Finalpolicy.loc[Accum_per_episode.index]
     #print(Finalpolicy_accum.to_markdown(),'\n \n \n')
     Mean_per_episode = Finalpolicy_accum.groupby('Policy Name')[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].mean()
-    print(Mean_per_episode.sort_values('Accumulated Reward Exploration',ascending=False).to_markdown(),'\n \n \n')
+    print(Mean_per_episode.sort_values('Accumulated Reward Intensification',ascending=False).to_markdown(),'\n \n \n')
     from pymoo.factory import get_performance_indicator
     from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
 
