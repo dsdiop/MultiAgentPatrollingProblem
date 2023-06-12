@@ -18,24 +18,16 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 # initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 
 #frame_stack
-nettype = '4'
+nettype = '0'
 
-
-weight = [None,None, 'nashmtl','mgda']
-wms = [dict(),dict(),dict(
-            update_weights_every=1,
-            optim_niter=1000,
-        ),dict()]
-archtypes = ['v1','v2','v1','v1']
+N=4
+ww = None
+wm = dict()
+archs = ['v1','v2']
 i=0
-for ww,wm,arch in zip(weight,wms,archtypes):
-    i+=1
-    if ww is None:
-        wwstr = '_x3c_'
-    else:
-        wwstr = ww
-    if i!=3:
-        continue
+masked_act = [False, True]
+for arch in archs:
+
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -47,6 +39,7 @@ for ww,wm,arch in zip(weight,wms,archtypes):
                             max_collisions=15,
                             forget_factor=0.5,
                             attrition=0.1,
+                            reward_type='Double reward v2',
                             networked_agents=False,
                             ground_truth_type='algae_bloom',
                             obstacles=False,
@@ -54,7 +47,7 @@ for ww,wm,arch in zip(weight,wms,archtypes):
                             state_index_stacking=(2, 3, 4),
                             reward_weights=(1.0, 0.1)
                             )
-    
+    rew = 'v2'
     multiagent = MultiAgentDuelingDQNAgent(env=env,
                                         memory_size=int(1E6),
                                         batch_size=64,#64
@@ -68,17 +61,18 @@ for ww,wm,arch in zip(weight,wms,archtypes):
                                         lr=1e-4,
                                         number_of_features=1024,
                                         noisy=False,
-                                        nettype='0',
+                                        nettype=nettype,
                                         archtype=arch,
                                         device='cuda:1',
                                         weighted=False,
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
-                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_15_'+'_net_'+nettype+'_'+wwstr+'_1000',
+                                        logdir=f'Learning/runs/Vehicles_{N}/Experimento_serv_21_'+'_net_'+nettype+'_arch_'+arch+'_rew'+rew+'_minimumidleness',
                                         use_nu=True,
                                         nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
                                         eval_episodes=10,
+                                        masked_actions= True,
                                         eval_every=1000,
                                         use_dwa=False,
                                         weighting_method=ww,

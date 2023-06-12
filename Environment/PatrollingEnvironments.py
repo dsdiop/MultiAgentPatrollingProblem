@@ -379,7 +379,8 @@ class MultiAgentPatrolling(gym.Env):
 		self.inside_obstacles_map = None
 		self.state = None
 		self.fig = None
-
+		self.minimum_importance = 0.01
+		self.minimum_idleness = -1.0 / (self.forget_factor * self.max_number_of_movements)
 		self.action_space = gym.spaces.Discrete(8)
 
 		assert frame_stacking >= 0, "frame_stacking must be >= 0"
@@ -413,7 +414,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		# Reset the ground truth #
 		self.gt.reset()
-		self.importance_matrix = self.gt.read()
+		self.importance_matrix = np.clip(self.gt.read(),self.minimum_importance,999999)
 		# Create an empty model #
 		self.model = np.zeros_like(self.scenario_map) if self.miopic else self.importance_matrix
 		self.model_ant = self.model.copy()
@@ -450,14 +451,14 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.idleness_matrix = self.idleness_matrix + 1.0 / (self.forget_factor * self.max_number_of_movements)
 		self.idleness_matrix = self.idleness_matrix - self.fleet.collective_mask
-		self.idleness_matrix = np.clip(self.idleness_matrix, 0, 1)
+		self.idleness_matrix = np.clip(self.idleness_matrix, self.minimum_idleness, 1)
 
 		return self.idleness_matrix
 
 	def update_information_importance(self):
 		""" Applied the attrition term """
 		self.importance_matrix = np.clip(
-			self.importance_matrix - self.attrition * self.gt.read() * self.fleet.collective_mask, 0.01, 999999)####### Clipped at 0.01 so the idleness affects everywhere
+			self.importance_matrix - self.attrition * self.gt.read() * self.fleet.collective_mask, self.minimum_importance, 999999)####### Clipped at 0.01 so the idleness affects everywhere
 
 	def update_state(self):
 		""" Update the state for every vehicle """
@@ -511,7 +512,7 @@ class MultiAgentPatrolling(gym.Env):
 		if self.miopic:
 			self.update_model()
 		else:
-			self.model = self.gt.read()
+			self.model = np.clip(self.gt.read(),self.minimum_importance,999999)
 
 		# Compute reward
 		reward = self.reward_function(collision_mask, action)
@@ -545,7 +546,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.model_ant = self.model.copy()
 
-		gt_ = self.gt.read()
+		gt_ = np.clip(self.gt.read(),self.minimum_importance,999999)
 		for vehicle in self.fleet.vehicles:
 			self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
 
@@ -629,11 +630,19 @@ class MultiAgentPatrolling(gym.Env):
 				veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
 
-		rewards_exploration = 0.2*np.array(
+
+		if 'v2' not in self.reward_type:
+			rewards_exploration = 0.2*np.array(
 			[np.sum(self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32) / (
 						1 * self.detection_length * self.fleet.redundancy_mask[
 					veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
+		else:
+			rewards_exploration = 0.2*np.array(
+				[np.sum((1+self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32))*self.idleness_matrix[
+					veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[
+						veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
+			)
 		"""
 		## if all the vehicles have discovered a new area (v2)
 		if 0 in rewards_exploration:
