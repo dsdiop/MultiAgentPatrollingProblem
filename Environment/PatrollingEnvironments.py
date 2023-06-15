@@ -380,7 +380,7 @@ class MultiAgentPatrolling(gym.Env):
 		self.state = None
 		self.fig = None
 		self.minimum_importance = 0.01
-		self.minimum_idleness = -1.0 / (self.forget_factor * self.max_number_of_movements)
+		self.minimum_idleness = 0.0 / (self.forget_factor * self.max_number_of_movements)
 		self.action_space = gym.spaces.Discrete(8)
 
 		assert frame_stacking >= 0, "frame_stacking must be >= 0"
@@ -653,6 +653,8 @@ class MultiAgentPatrolling(gym.Env):
 		self.info = {}
 
 		cost = {agent_id: 1 if action % 2 == 0 else np.sqrt(2) for agent_id, action in actions.items()}
+		distances = [dist/self.detection_length for dist in self.fleet.get_distances()]
+		cost = {agent_id: 1 if 'v3' not in self.reward_type else distances[agent_id] for agent_id in range(self.fleet.number_of_vehicles)}
 		rewards = {agent_id: rewards[agent_id] / cost[agent_id] if not collision_mask[agent_id] else -1.0*np.ones(2) for
 				   agent_id in actions.keys()}
 		return {agent_id: rewards[agent_id] for agent_id in range(self.number_of_agents) if
@@ -723,12 +725,12 @@ if __name__ == '__main__':
 
 	env = MultiAgentPatrolling(scenario_map=sc_map,
 							   fleet_initial_positions=initial_positions,
-							   distance_budget=250,
+							   distance_budget=200,
 							   number_of_vehicles=N,
 							   seed=0,
 							   miopic=True,
 							   detection_length=2,
-							   movement_length=1,
+							   movement_length=2,
 							   max_collisions=500,
 							   forget_factor=0.5,
 							   attrition=0.1,
@@ -737,6 +739,7 @@ if __name__ == '__main__':
 							   obstacles=True,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
+				 			   reward_type='Double reward v2 v3',
 							   reward_weights=(1.0, 0.1)
 							 )
 
