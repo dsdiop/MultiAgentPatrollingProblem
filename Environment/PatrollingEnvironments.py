@@ -372,7 +372,7 @@ class MultiAgentPatrolling(gym.Env):
 		
 
 		""" Model attributes """
-		self.actual_known_map = None
+		self.known_information = None
 		self.idleness_matrix = None
 		self.importance_matrix = None
 		self.model = None
@@ -409,6 +409,15 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.reward_normalization_value = self.fleet.vehicles[0].detection_mask
 
+		# Metrics
+		self.steps = 0
+		self.instantaneous_node_idleness = None# Instantaneous node idleness
+		self.node_visit = None
+		self.average_visit_idleness = None
+		self.global_average_visit_idleness = None
+		self.instantaneous_global_idleness = None
+		self.sum_global_idleness = None
+		self.average_global_idleness = None
 	def reset(self):
 		""" Reset the environment """
 
@@ -444,7 +453,17 @@ class MultiAgentPatrolling(gym.Env):
 
 		# Update the state of the agents #
 		self.update_state()
-
+		# Metrics
+		self.steps = 0
+		self.instantaneous_node_idleness = np.copy(self.idleness_matrix) # Instantaneous node idleness
+		self.node_visit = np.zeros_like(self.scenario_map)
+		self.average_visit_idleness = np.zeros_like(self.scenario_map)
+		self.global_average_visit_idleness = 0
+		self.instantaneous_global_idleness = 0
+		self.sum_global_idleness = 0
+		self.average_global_idleness = 0
+		self.update_metrics()
+    
 		return self.state if self.frame_stacking is None else self.frame_stacking.process(self.state)
 
 	def update_temporal_mask(self):
@@ -474,10 +493,10 @@ class MultiAgentPatrolling(gym.Env):
 		# State 2 -> Known information
 		# state[2] = self.importance_matrix * self.fleet.historic_visited_mask if self.miopic else self.importance_matrix
 		if self.miopic:
-			known_information = -np.ones_like(self.model)
-			known_information[np.where(self.fleet.historic_visited_mask)] = self.model[np.where(self.fleet.historic_visited_mask)]
+			self.known_information = -np.ones_like(self.model)
+			self.known_information[np.where(self.fleet.historic_visited_mask)] = self.model[np.where(self.fleet.historic_visited_mask)]
 		else:
-			known_information = self.gt.read()
+			self.known_information = self.gt.read()
 
 		# Create fleet position #
 		fleet_position_map = np.zeros_like(self.scenario_map)
@@ -495,7 +514,7 @@ class MultiAgentPatrolling(gym.Env):
 			state[i] = np.concatenate((
 				obstacle_map[np.newaxis],
 				self.idleness_matrix[np.newaxis],
-				known_information[np.newaxis],
+				self.known_information[np.newaxis],
 				agent_observation_of_position[np.newaxis],
 				agent_observation_of_fleet[np.newaxis]
 			))
@@ -524,6 +543,10 @@ class MultiAgentPatrolling(gym.Env):
 		# Update state
 		self.update_state()
 
+		# Update metrics
+		self.steps += 1
+		self.update_metrics()
+  
 		# Final condition #
 		done = {agent_id: self.fleet.get_distances()[agent_id] > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions for agent_id in range(self.number_of_agents)}
 		self.active_agents = [not d for d in done.values()]
@@ -549,7 +572,24 @@ class MultiAgentPatrolling(gym.Env):
 		gt_ = np.clip(self.gt.read(),self.minimum_importance,999999)
 		for vehicle in self.fleet.vehicles:
 			self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
+	def update_metrics(self):
+     
+		self.instantaneous_node_idleness = np.copy(self.idleness_matrix*self.known_information) # Instantaneous node idleness
+		self.node_visit = self.node_visit + self.fleet.redundancy_mask
 
+		for i in range(self.node_visit.shape[0]):
+			for j in range(self.node_visit.shape[1]):
+					if self.fleet.redundancy_mask[i,j] >= 1:
+						self.average_visit_idleness[i,j] += self.instantaneous_node_idleness[i,j]/self.node_visit[i,j] 
+      
+		self.global_average_visit_idleness = np.mean(self.average_visit_idleness[np.where(self.scenario_map==1)]) 
+		self.instantaneous_global_idleness =  np.mean(self.instantaneous_node_idleness[np.where(self.scenario_map==1)])
+		self.sum_global_idleness += self.instantaneous_global_idleness
+		if self.steps!=0:
+			self.average_global_idleness = self.sum_global_idleness/self.steps
+		else:
+			self.average_global_idleness = self.sum_global_idleness
+  
 	def render(self, mode='human'):
 
 		import matplotlib.pyplot as plt
@@ -561,7 +601,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		if self.fig is None:
 
-			self.fig, self.axs = plt.subplots(1, 6, figsize=(15,5))
+			self.fig, self.axs = plt.subplots(1, 7, figsize=(15,5))
 			
 			# Print the obstacles map
 			self.im0 = self.axs[0].imshow(self.state[agente_disponible][0], cmap = background_colormap)
@@ -583,21 +623,29 @@ class MultiAgentPatrolling(gym.Env):
 			# Print model (I)  #
 			self.im2 = self.axs[2].imshow(model,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
 			self.axs[2].set_title("Model / Importance (I)")
+   
+   			# Print Intantaneous model (I)  #
+			
+			instantaneous_model = known*np.nan
+			instantaneous_model[np.where(self.fleet.historic_visited_mask)] = self.known_information[np.where(self.fleet.historic_visited_mask)]
+			instantaneous_model = np.clip(self.idleness_matrix*instantaneous_model,0,1)
+			self.im3 = self.axs[3].imshow(instantaneous_model,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
+			self.axs[3].set_title("Intantaneous Model / Importance (I)")
 
 			# Print the real GT
-			self.im3_known = self.axs[3].imshow(known, cmap='gray', vmin=0, vmax=1)
+			self.im4_known = self.axs[4].imshow(known, cmap='gray', vmin=0, vmax=1)
 			real_gt = known*np.nan
 			real_gt[self.visitable_locations[:,0], self.visitable_locations[:,1]] = self.gt.read()[self.visitable_locations[:,0], self.visitable_locations[:,1]]
-			self.im3 = self.axs[3].imshow(real_gt,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
-			self.axs[3].set_title("Real importance GT")
+			self.im4 = self.axs[4].imshow(real_gt,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
+			self.axs[4].set_title("Real importance GT")
 
 			# Agent 0 position #
-			self.im4 = self.axs[4].imshow(self.state[agente_disponible][3], cmap = 'gray')
-			self.axs[4].set_title("Agent 0 position")
+			self.im5 = self.axs[5].imshow(self.state[agente_disponible][3], cmap = 'gray')
+			self.axs[5].set_title("Agent 0 position")
 
 			# Others-than-Agent 0 position #
-			self.im5 = self.axs[5].imshow(self.state[agente_disponible][4], cmap = 'gray')
-			self.axs[5].set_title("Others agents position")
+			self.im6 = self.axs[6].imshow(self.state[agente_disponible][4], cmap = 'gray')
+			self.axs[6].set_title("Others agents position")
 
 		self.im0.set_data(self.state[agente_disponible][0])
 		self.im1.set_data(self.state[agente_disponible][1])
@@ -605,12 +653,16 @@ class MultiAgentPatrolling(gym.Env):
 		known = np.zeros_like(self.scenario_map)*np.nan
 		known[np.where(self.fleet.historic_visited_mask == 1)] = self.state[agente_disponible][2][np.where(self.fleet.historic_visited_mask == 1)]
 		self.im2.set_data(known)
+		instantaneous_model = known*np.nan
+		instantaneous_model[np.where(self.fleet.historic_visited_mask)] = self.known_information[np.where(self.fleet.historic_visited_mask)]
+		instantaneous_model = np.clip(self.idleness_matrix*instantaneous_model,0,1)
+		self.im3.set_data(instantaneous_model)
 
-		self.im4.set_data(self.state[agente_disponible][3])
+		self.im5.set_data(self.state[agente_disponible][3])
 		real_gt = known*np.nan
 		real_gt[self.visitable_locations[:,0], self.visitable_locations[:,1]] = self.gt.read()[self.visitable_locations[:,0], self.visitable_locations[:,1]]
-		self.im3.set_data(real_gt)
-		self.im5.set_data(self.state[agente_disponible][4])
+		self.im4.set_data(real_gt)
+		self.im6.set_data(self.state[agente_disponible][4])
 
 		self.fig.canvas.draw()
 		self.fig.canvas.flush_events()
@@ -736,10 +788,10 @@ if __name__ == '__main__':
 							   attrition=0.1,
 							   networked_agents=False,
 							   ground_truth_type='algae_bloom',
-							   obstacles=True,
+							   obstacles=False,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
-				 			   reward_type='Double reward v2 v3',
+				 			   reward_type='Double reward v2',
 							   reward_weights=(1.0, 0.1)
 							 )
 
@@ -760,7 +812,7 @@ if __name__ == '__main__':
 			if agent_mask[action[idx]]:
 				action[idx] = np.random.choice(np.arange(8), p=(1-agent_mask)/np.sum((1-agent_mask)))
 		s, r, done, _ = env.step(action)
-		print(env.fleet.fleet_collisions )
+		print(env.fleet.get_positions() )
 		env.render()
 
 		R.append(list(r.values()))
