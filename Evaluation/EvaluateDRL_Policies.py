@@ -72,6 +72,7 @@ def EvaluateMultiagent(number_of_agents: int,
                                 obstacles=False,
                                 frame_stacking=environment_config['frame_stacking'],
                                 state_index_stacking=environment_config['state_index_stacking'],
+				                reward_type=environment_config['reward_type'],
                                 reward_weights=environment_config['reward_weights']
                                 )
 
@@ -104,7 +105,7 @@ def EvaluateMultiagent(number_of_agents: int,
                                         noisy=False,
                                         nettype=agent_config['nettype'],
                                         archtype=agent_config['archtype'],
-                                        device='cuda:1',
+                                        device='cuda',
                                         train_every=15,
                                         save_every=1000,
                                         distributional=False,
@@ -121,11 +122,12 @@ def EvaluateMultiagent(number_of_agents: int,
                                                 'Total Accumulated Reward',
                                                 'Total Length',
                                                 'Total Collisions',
-                                                'Nu'],
+                                                'Instantaneous global idleness',
+                                                'Global average visit idleness',
+                                                'Average global idleness'],
                                 algorithm_name='DRL',
                                 experiment_name='DRLResults',
                                 directory=metrics_directory)
-
     if os.path.exists(metrics_directory + 'DRLResults' + '.csv'):
         metrics.load_df(metrics_directory + 'DRLResults' + '.csv')
         
@@ -159,8 +161,16 @@ def EvaluateMultiagent(number_of_agents: int,
         total_reward_exploration = 0
         total_length = 0
         total_collisions = 0
-        
-        metrics_list = [policy_name, total_reward_information, total_reward_exploration, total_reward, total_length, total_collisions, multiagent.nu]
+        instantaneous_global_idleness = env.instantaneous_global_idleness
+        global_average_visit_idleness = env.global_average_visit_idleness 
+        average_global_idleness = env.average_global_idleness
+        metrics_list = [policy_name, total_reward_information,
+                        total_reward_exploration,
+                        total_reward, total_length,
+                        total_collisions,
+                        instantaneous_global_idleness,
+                        global_average_visit_idleness,
+                        average_global_idleness]
         # Initial register #
         metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
         for veh_id, veh in enumerate(env.fleet.vehicles):
@@ -176,24 +186,25 @@ def EvaluateMultiagent(number_of_agents: int,
                                         p2=multiagent.nu_intervals[1],
                                         p3=multiagent.nu_intervals[2],
                                         p4=multiagent.nu_intervals[3])
-                
-                #print(multiagent.nu)
+                if render:
+                    print(multiagent.nu)
             # Select the action using the current policy
             
-            if not multiagent.masked_actions:
+            if not  multiagent.masked_actions:
                 actions = multiagent.select_action(state)
             else:
                 actions = multiagent.select_masked_action(states=state, positions=env.fleet.get_positions())
 
 
             actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
-
+            #print(env.fleet.get_positions())
             # Process the agent step #
             next_state, reward, done = multiagent.step(actions)
             #print(reward)
             if render and run==0:
                 env.render()
-
+            
+            #print(reward)
             # Update the state #
             state = next_state
             rewards = np.asarray(list(reward.values()))
@@ -204,7 +215,17 @@ def EvaluateMultiagent(number_of_agents: int,
             recompensa_inf.append(total_reward_information)
             total_collisions += env.fleet.fleet_collisions    
             total_reward = total_reward_exploration + total_reward_information
-            metrics_list = [policy_name, total_reward_information, total_reward_exploration, total_reward, total_length, total_collisions, multiagent.nu]
+            
+            instantaneous_global_idleness = env.instantaneous_global_idleness
+            global_average_visit_idleness = env.global_average_visit_idleness 
+            average_global_idleness = env.average_global_idleness
+            metrics_list = [policy_name, total_reward_information,
+                            total_reward_exploration,
+                            total_reward, total_length,
+                            total_collisions,
+                            instantaneous_global_idleness,
+                            global_average_visit_idleness,
+                            average_global_idleness]
             metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
             for veh_id, veh in enumerate(env.fleet.vehicles):
                 paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
@@ -213,9 +234,12 @@ def EvaluateMultiagent(number_of_agents: int,
         ax.legend()
         ax.plot(recompensa_inf, label='Information reward')
         ax.legend()  
-        plt.show()  """     
-    metrics.register_experiment()
-    paths.register_experiment()
+        plt.show()  """  
+    if not render:   
+        metrics.register_experiment()
+        paths.register_experiment()
+    else:
+        plt.close()
 
     # Return the average reward, average length
     mean_reward_inf = total_reward_information / num_of_eval_episodes
@@ -235,54 +259,95 @@ if __name__ == '__main__':
         visitable_locations = np.vstack(np.where(sc_map != 0)).T
         random_index = np.random.choice(np.arange(0,len(visitable_locations)), N, replace=False)
         initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
-        num_of_eval_episodes = 100
-        policy_names = [ 'Experimento_serv_0_nettype_0',
-                        'Experimento_serv_0_nettype_1',
-                        'Experimento_serv_1_lr2_nettype_0',
-                        'Experimento_serv_2_nettype_0',
-                        'Experimento_serv_3_bs64_nettype_0',
-                        'Experimento_serv_3_bs256_nettype_0',
-                        'Experimento_serv_4_rewardv2_nettype_0',
-                        'Experimento_serv_5_fstack2_nettype_0',
-                        'Experimento_serv_6_bs64_nettype_2',
+        num_of_eval_episodes = 200
+        policy_names_veh4 = [ #'Experimento_serv_0_nettype_0',
+                        #'Experimento_serv_0_nettype_1',
+                        #'Experimento_serv_1_lr2_nettype_0',
+                        #'Experimento_serv_2_nettype_0',
+                        #'Experimento_serv_3_bs64_nettype_0',
+                        #'Experimento_serv_3_bs256_nettype_0',
+                        #'Experimento_serv_4_rewardv2_nettype_0',
+                        #'Experimento_serv_5_fstack2_nettype_0',
                         'Experimento_serv_7_bs64_nettype_3',
                         'Experimento_serv_7_bs64_nettype_4',
                         'Experimento_serv_8_nettype_0_n_of_features_1024_archtype_v2',
-                        'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
-                        'Experimento_serv_9_nettype_0_archtype_v1',
-                        'Experimento_serv_9_nettype_0_archtype_v2',
-                        'Experimento_serv_10_nettype_0_archtype_v1',
+                        #'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
+                        #'Experimento_serv_9_nettype_0_archtype_v1',
+                        #'Experimento_serv_9_nettype_0_archtype_v2',
+                        #'Experimento_serv_10_nettype_0_archtype_v1',
                         'Experimento_serv_10_nettype_0_archtype_v2',
-                        'Experimento_serv_11_nettype_0_archtype_v1',
-                        'Experimento_serv_11_nettype_0_archtype_v2',
-                        'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
-                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
-                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
-                        'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
-                        'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
-                        'Experimento_serv_14__net_0_nashmtl',
+                        #'Experimento_serv_11_nettype_0_archtype_v1',
+                        #'Experimento_serv_11_nettype_0_archtype_v2',
+                        #'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
+                        #'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
+                        #'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
+                        #'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
+                        #'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
+                        #'Experimento_serv_14__net_0_nashmtl',
                         'Experimento_serv_14__net_0_nashmtl_100',
                         'Experimento_serv_14__net_0_pcgrad', 
-                        'Experimento_serv_14__net_0_rlw',
-                        'Experimento_serv_14__net_0_scaleinvls',
-                        'Experimento_serv_14__net_0_cagrad',
-                        'Experimento_serv_14__net_0_escalon',
+                        #'Experimento_serv_14__net_0_rlw',
+                        #'Experimento_serv_14__net_0_scaleinvls',
+                        #'Experimento_serv_14__net_0_cagrad',
+                        #'Experimento_serv_14__net_0_escalon',
                         'Experimento_serv_14__net_0_imtl',
-                        'Experimento_serv_14__net_0_infclipped',
+                        #'Experimento_serv_14__net_0_infclipped',
                         'Experimento_serv_14__net_0_mgda',
-                        'Experimento_serv_15__net_4___v1',
-                        'Experimento_serv_15__net_4___v2',
-                        'Experimento_serv_15__net_4__x3c__v1',
-                        'Experimento_serv_15__net_4_nashmtl_v1',
-                        'Experimento_serv_15__net_4_nashmtl_1000']
+                        'Experimento_serv_15__net_0___v2',
+                        'Experimento_serv_15__net_0__x3c__v1',
+                        'Experimento_serv_15__net_0_nashmtl_v1',
+                        'Experimento_serv_15__net_0_nashmtl_1000',
+                        'Experimento_serv_17_rewardv3_net_0v1',
+                        'Experimento_serv_18__net_4v1notmasked',
+                        'Experimento_serv_19__net_4_arch_v1_rewv1',
+                        'Experimento_serv_19__net_4_arch_v1_rewv2',
+                        'Experimento_serv_19__net_4_arch_v2_rewv1',
+                        'Experimento_serv_19__net_4_arch_v2_rewv2',
+                        'Experimento_serv_20__net_0_arch_v1_rewv2_notmasked_detlength_1',
+                        'Experimento_serv_21__net_0_arch_v1_rewv2_minimumidleness',
+                        'Experimento_serv_22__net_0_arch_v1_rewv2_minimumidleness_menos2',
+                        'Experimento_serv_22__net_0_arch_v2_rewv2_minimumidleness_menos2',
+                        'Experimento_serv_22__net_0_arch_v1_rewv2_minimumidleness_menos1',
+                        'Experimento_serv_22__net_0_arch_v2_rewv2_minimumidleness_menos1',
+                        'Experimento_serv_23__net_0_arch_v1_rewv2_v2v3']
+        policy_names_veh4 = ['Experimento_serv_22__net_0_arch_v1_rewv2_no_cost',
+                        'Experimento_serv_22__net_0_arch_v2_rewv2_no_cost',
+                        'Experimento_serv_24_net_4_arch_v1_rew_v2',
+                        'Experimento_serv_24_net_4_arch_v2_rew_v2',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_imtl',
+                        #'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_mgda',
+                        #'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_scaleinvls']
+        
+        policy_names_veh2 =['Experimento_serv_16__net_0v1','Experimento_serv_19__net_4_arch_v1_rewv1']
+        policy_names_veh3 =['Experimento_serv_16__net_0v1','Experimento_serv_19__net_4_arch_v1_rewv1']
         policy_types = ['Final_Policy','BestPolicy','BestPolicy_reward_information','BestPolicy_reward_exploration']
         for policy_type in policy_types:
-            for i,policy_name in enumerate(policy_names):
-                if 'Experimento_serv_15__' not in policy_name:
+            if 'BestPolicy' not in policy_type:
+                pass
+            for i,policy_name in enumerate(policy_names_veh4):
+                if 'Experimento_serv_22'  not in policy_name:
                     continue
                 print(policy_name + policy_type)
-                policy_path = f'{data_path}/../Learning/runs/Vehicles_4/{policy_name}/'
-                seed = 17
+                data_path1 = 'C:\\Users\\dames\\Downloads\\Learning\\runs\\Vehicles_4\\Finales'
+                policy_path = f'{data_path1}/{policy_name}/'
+                seed = 30 #30
                 EvaluateMultiagent(number_of_agents=N,
                                 sc_map=sc_map,
                                 visitable_locations=visitable_locations,
@@ -293,7 +358,7 @@ if __name__ == '__main__':
                                 seed=seed,
                                 policy_name=policy_name,
                                 metrics_directory= f'./{policy_type}',
-                                render = True
+                                render = False
                                 )
     
     
@@ -301,6 +366,8 @@ if __name__ == '__main__':
         policy_types = ['Final_Policy','BestPolicy','BestPolicy_reward_information','BestPolicy_reward_exploration']
         csvtype = ['DRL_paths.csv','DRLResults.csv']
         for pol in policy_types:
+            if 'Final_Policy' not in pol:
+                continue
             for cc in csvtype:
                 df2 = pd.read_csv(f'{data_path}/../{pol}{cc}')
                 df1 = pd.read_csv(f'{data_path}/Evaluation/{pol}{cc}')
@@ -312,14 +379,75 @@ if __name__ == '__main__':
                 # Write the resulting dataframe to a new CSV file
                 result.to_csv(f'{data_path}/Evaluation/Results/{pol}{cc}', index=False)
 
-    Finalpolicy = pd.read_csv(f'{data_path}/Evaluation/Results/BestPolicyDRLResults.csv')
-    Accum_per_episode = Finalpolicy.groupby(['Policy Name','Run'])[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].tail(1) 
+    Finalpolicy = pd.read_csv(f'{data_path}/Final_PolicyDRLResults.csv')
+    indexes_to_skip = [ 'Experimento_serv_0_nettype_0',
+                        'Experimento_serv_0_nettype_1',
+                        'Experimento_serv_1_lr2_nettype_0',
+                        'Experimento_serv_2_nettype_0',
+                        'Experimento_serv_3_bs64_nettype_0',
+                        'Experimento_serv_3_bs256_nettype_0',
+                        'Experimento_serv_4_rewardv2_nettype_0',
+                        'Experimento_serv_5_fstack2_nettype_0',
+                        'Experimento_serv_8_nettype_5_n_of_features_512_archtype_v1',
+                        'Experimento_serv_9_nettype_0_archtype_v1',
+                        'Experimento_serv_9_nettype_0_archtype_v2',
+                        'Experimento_serv_10_nettype_0_archtype_v1',
+                        'Experimento_serv_11_nettype_0_archtype_v1',
+                        'Experimento_serv_11_nettype_0_archtype_v2',
+                        'Experimento_serv_13__v1_wei_True_gt_algae_bloom_db_200_i1',
+                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_400_i2',
+                        'Experimento_serv_13__v1_wei_False_gt_algae_bloom_db_200_i3',
+                        'Experimento_serv_13__v2_wei_False_gt_algae_bloom_db_200_i4',
+                        'Experimento_serv_13__v1_wei_False_gt_shekel_db_200_i5',
+                        'Experimento_serv_14__net_0_nashmtl',
+                        'Experimento_serv_14__net_0_rlw',
+                        'Experimento_serv_14__net_0_scaleinvls',
+                        'Experimento_serv_14__net_0_cagrad',
+                        'Experimento_serv_14__net_0_escalon',
+                        'Experimento_serv_14__net_0_infclipped',
+                        'Experimento_serv_14__net_0_pcgrad', 
+                        'Experimento_serv_14__net_0_mgda'
+                        'Experimento_serv_24_net_4_arch_v1_rew_v2',
+                        'Experimento_serv_24_net_4_arch_v2_rew_v2',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_0_arch_v1_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_0_arch_v2_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_imtl',
+                        #'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_mgda',
+                        #'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_4_arch_v1_rew_v2_weight_scaleinvls',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_dwa',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_imtl',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_mgda',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_nashmtl',
+                        'Experimento_serv_25_net_4_arch_v2_rew_v2_weight_scaleinvls']
+    Finalpolicy = Finalpolicy[~Finalpolicy['Policy Name'].isin(indexes_to_skip)]
+    values_to_evaluate =['Accumulated Reward Intensification',
+                                                'Accumulated Reward Exploration',
+                                                'Total Accumulated Reward',
+                                                'Total Length',
+                                                'Total Collisions',
+                                                'Instantaneous global idleness',
+                                                'Global average visit idleness',
+                                                'Average global idleness']
+    Accum_per_episode = Finalpolicy.groupby(['Policy Name','Run'])[values_to_evaluate].tail(1) 
     #print(Accum_per_episode.to_markdown(),'\n \n \n')
     # merge the result dataframe with the original dataframe on the 'group' and 'value' columns
     Finalpolicy_accum = Finalpolicy.loc[Accum_per_episode.index]
+
     #print(Finalpolicy_accum.to_markdown(),'\n \n \n')
-    Mean_per_episode = Finalpolicy_accum.groupby('Policy Name')[['Accumulated Reward Intensification', 'Accumulated Reward Exploration']].mean()
-    print(Mean_per_episode.sort_values('Accumulated Reward Intensification',ascending=False).to_markdown(),'\n \n \n')
+    Mean_per_episode = Finalpolicy_accum.groupby('Policy Name')[values_to_evaluate].median()
+    # Filter out rows based on their index
+    Mean_per_episode = Mean_per_episode[~Mean_per_episode.index.isin(indexes_to_skip)]
+    print(Mean_per_episode.sort_values('Accumulated Reward Exploration',ascending=False).to_markdown(),'\n \n \n')
     from pymoo.factory import get_performance_indicator
     from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
 
@@ -338,8 +466,8 @@ if __name__ == '__main__':
     print(pf)
 
     
-    sns.relplot(
-    data=Mean_per_episode.sort_values('Accumulated Reward Exploration',ascending=False), kind="scatter",
-    x="Accumulated Reward Exploration", y="Accumulated Reward Intensification", hue="Policy Name"
+    sns.boxplot(
+    data=Finalpolicy_accum,
+    x='Policy Name', y="Average global idleness", hue='Policy Name'
 )
     plt.show()
