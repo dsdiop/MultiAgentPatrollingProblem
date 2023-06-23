@@ -573,8 +573,10 @@ class MultiAgentPatrolling(gym.Env):
 		for vehicle in self.fleet.vehicles:
 			self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
 	def update_metrics(self):
-     
-		self.instantaneous_node_idleness = np.copy(self.idleness_matrix*self.known_information) # Instantaneous node idleness
+		instantaneous_node_idleness = np.copy(self.scenario_map)
+		inds = np.where(self.fleet.historic_visited_mask)
+		instantaneous_node_idleness[inds] = self.idleness_matrix[inds]*self.known_information[inds]
+		self.instantaneous_node_idleness = np.clip(instantaneous_node_idleness,0,1) # Instantaneous node idleness
 		self.node_visit = self.node_visit + self.fleet.redundancy_mask
 
 		for i in range(self.node_visit.shape[0]):
@@ -589,7 +591,8 @@ class MultiAgentPatrolling(gym.Env):
 			self.average_global_idleness = self.sum_global_idleness/self.steps
 		else:
 			self.average_global_idleness = self.sum_global_idleness
-  
+  		
+    	
 	def render(self, mode='human'):
 
 		import matplotlib.pyplot as plt
