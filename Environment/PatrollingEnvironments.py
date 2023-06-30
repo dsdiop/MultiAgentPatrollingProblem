@@ -418,6 +418,13 @@ class MultiAgentPatrolling(gym.Env):
 		self.instantaneous_global_idleness = None
 		self.sum_global_idleness = None
 		self.average_global_idleness = None
+  
+		self.instantaneous_node_idleness_exp = None # Instantaneous node idleness
+		self.average_visit_idleness_exp = None
+		self.global_average_visit_idleness_exp = None
+		self.instantaneous_global_idleness_exp = None
+		self.sum_global_idleness_exp = None
+		self.average_global_idleness_exp = None
 	def reset(self):
 		""" Reset the environment """
 
@@ -462,6 +469,14 @@ class MultiAgentPatrolling(gym.Env):
 		self.instantaneous_global_idleness = 0
 		self.sum_global_idleness = 0
 		self.average_global_idleness = 0
+  
+  
+		self.instantaneous_node_idleness_exp = np.copy(self.idleness_matrix) # Instantaneous node idleness
+		self.average_visit_idleness_exp = np.zeros_like(self.scenario_map)
+		self.global_average_visit_idleness_exp = 0
+		self.instantaneous_global_idleness_exp = 0
+		self.sum_global_idleness_exp = 0
+		self.average_global_idleness_exp = 0
 		self.update_metrics()
     
 		return self.state if self.frame_stacking is None else self.frame_stacking.process(self.state)
@@ -546,6 +561,11 @@ class MultiAgentPatrolling(gym.Env):
 		# Update metrics
 		self.steps += 1
 		self.update_metrics()
+
+		# Manage reward v3
+		global_idl= [self.instantaneous_global_idleness, self.instantaneous_global_idleness_exp]
+		cost_idl = {agent_id: 1 if 'v3' not in self.reward_type else global_idl for agent_id,rew in reward.items()}
+		reward = {agent_id: rew / cost_idl[agent_id] if np.all(rew)>0 else rew for agent_id,rew in reward.items()}
   
 		# Final condition #
 		done = {agent_id: self.fleet.get_distances()[agent_id] > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions for agent_id in range(self.number_of_agents)}
@@ -574,25 +594,40 @@ class MultiAgentPatrolling(gym.Env):
 			self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
 	def update_metrics(self):
 		instantaneous_node_idleness = np.copy(self.scenario_map)
+		instantaneous_node_idleness_exp = np.copy(self.scenario_map)
+  
 		inds = np.where(self.fleet.historic_visited_mask)
+		instantaneous_node_idleness_exp[inds] = self.idleness_matrix[inds]
 		instantaneous_node_idleness[inds] = self.idleness_matrix[inds]*self.known_information[inds]
+  
 		self.instantaneous_node_idleness = np.clip(instantaneous_node_idleness,0,1) # Instantaneous node idleness
+		self.instantaneous_node_idleness_exp = np.clip(instantaneous_node_idleness_exp,0,1) # Instantaneous node idleness
+  
 		self.node_visit = self.node_visit + self.fleet.redundancy_mask
 
 		for i in range(self.node_visit.shape[0]):
 			for j in range(self.node_visit.shape[1]):
 					if self.fleet.redundancy_mask[i,j] >= 1:
 						self.average_visit_idleness[i,j] += self.instantaneous_node_idleness[i,j]/self.node_visit[i,j] 
+						self.average_visit_idleness_exp[i,j] += self.instantaneous_node_idleness_exp[i,j]/self.node_visit[i,j] 
       
 		self.global_average_visit_idleness = np.mean(self.average_visit_idleness[np.where(self.scenario_map==1)]) 
+		self.global_average_visit_idleness_exp = np.mean(self.average_visit_idleness_exp[np.where(self.scenario_map==1)]) 
+  
 		self.instantaneous_global_idleness =  np.mean(self.instantaneous_node_idleness[np.where(self.scenario_map==1)])
+		self.instantaneous_global_idleness_exp =  np.mean(self.instantaneous_node_idleness_exp[np.where(self.scenario_map==1)])
+  
 		self.sum_global_idleness += self.instantaneous_global_idleness
+		self.sum_global_idleness_exp  += self.instantaneous_global_idleness_exp 
+  
 		if self.steps!=0:
 			self.average_global_idleness = self.sum_global_idleness/self.steps
+			self.average_global_idleness_exp = self.sum_global_idleness_exp/self.steps
 		else:
 			self.average_global_idleness = self.sum_global_idleness
-  		
-    	
+			self.average_global_idleness_exp = self.sum_global_idleness_exp
+
+        
 	def render(self, mode='human'):
 
 		import matplotlib.pyplot as plt
@@ -709,7 +744,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		#cost = {agent_id: 1 if action % 2 == 0 else np.sqrt(2) for agent_id, action in actions.items()}
 		distances = [dist/self.detection_length for dist in self.fleet.get_distances()]
-		cost = {agent_id: 1 if 'v3' not in self.reward_type else distances[agent_id] for agent_id in range(self.fleet.number_of_vehicles)}
+		cost = {agent_id: 1 if 'v4' not in self.reward_type else distances[agent_id] for agent_id in range(self.fleet.number_of_vehicles)}
 		rewards = {agent_id: rewards[agent_id] / cost[agent_id] if not collision_mask[agent_id] else -1.0*np.ones(2) / cost[agent_id] for
 				   agent_id in actions.keys()}
 		return {agent_id: rewards[agent_id] for agent_id in range(self.number_of_agents) if
