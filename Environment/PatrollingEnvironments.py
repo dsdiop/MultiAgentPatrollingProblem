@@ -713,6 +713,31 @@ class MultiAgentPatrolling(gym.Env):
 		""" Reward function:
 			r(t) = Sum(I(m)*W(m)/Dr(m)) - Pc - Pn
 		"""
+		if 'v4' in self.reward_type:
+			rewards_information_global = np.sum(self.importance_matrix[self.fleet.collective_mask] * self.idleness_matrix[
+			self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
+			self.fleet.collective_mask]))
+			rewards_exploration_global = 0.2*np.sum((1+self.fleet.new_visited_mask[self.fleet.collective_mask].astype(np.float32))*self.idleness_matrix[
+					self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
+						self.fleet.collective_mask])) 
+
+			rews = []
+			self.info = {} 
+   
+			for agent_id in range(self.number_of_agents):
+				rew_without_i = np.sum([veh.detection_mask if id!=agent_id else np.zeros_like(veh.detection_mask) for id,veh in enumerate(self.fleet.vehicles)], axis=0)
+				rewards_information_without_i = np.sum(self.importance_matrix[rew_without_i.astype(bool)] * self.idleness_matrix[
+				rew_without_i.astype(bool)] / (1 * self.detection_length * rew_without_i[rew_without_i.astype(bool)]))
+    
+				
+				rewards_exploration_without_i = 0.2*np.sum((1+self.fleet.new_visited_mask[rew_without_i.astype(bool)].astype(np.float32))*self.idleness_matrix[
+						rew_without_i.astype(bool)] / (1 * self.detection_length * rew_without_i[rew_without_i.astype(bool)])) 
+				rews.append(np.array([rewards_information_global-rewards_information_without_i, rewards_exploration_global-rewards_exploration_without_i]))
+    
+			rewards = {agent_id: rews[agent_id] if not collision_mask[agent_id] else -1.0*np.ones(2) for
+					agent_id in actions.keys()}
+			return {agent_id: rewards[agent_id] for agent_id in range(self.number_of_agents) if
+					self.active_agents[agent_id]}
 
 		rewards_information = np.array(
 			[np.sum(self.importance_matrix[veh.detection_mask.astype(bool)] * self.idleness_matrix[
@@ -829,7 +854,7 @@ if __name__ == '__main__':
 							   obstacles=False,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
-				 			   reward_type='Double reward v2',
+				 			   reward_type='Double reward v2 v4',
 							   reward_weights=(1.0, 0.1)
 							 )
 
