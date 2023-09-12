@@ -120,9 +120,7 @@ class DiscreteFleet:
 				 fleet_initial_positions,
 				 movement_length,
 				 detection_length,
-				 navigation_map,
-				 max_connection_distance=10,
-				 optimal_connection_distance=5):
+				 navigation_map):
 
 		""" Coordinator of the movements of the fleet. Coordinates the common model, the distance between drones, etc. """
 		np.random.seed(0)
@@ -151,14 +149,6 @@ class DiscreteFleet:
 		self.measured_values = None
 		self.measured_locations = None
 
-		# Reset fleet-communication-restriction variables #
-		self.max_connection_distance = max_connection_distance
-		self.isolated_mask = None
-		self.fleet_collisions = 0
-		self.danger_of_isolation = None
-		self.distance_between_agents = None
-		self.optimal_connection_distance = optimal_connection_distance
-		self.number_of_disconnections = 0
 
 	@staticmethod
 	def majority(arr: np.ndarray) -> bool:
@@ -179,7 +169,6 @@ class DiscreteFleet:
 
 		# True if repeated #
 		not_collision_within = counts[inverse_index] == 1
-
 		return not_collision_within
 
 	def move(self, fleet_actions):
@@ -200,25 +189,7 @@ class DiscreteFleet:
 		previous_historic_visited_mask = self.historic_visited_mask
 		self.historic_visited_mask = np.logical_or(self.historic_visited_mask, self.collective_mask)
 		self.new_visited_mask = np.logical_xor(self.historic_visited_mask, previous_historic_visited_mask)
-		# Update the isolation mask (for networked agents) #
-		self.update_isolated_mask()
-
 		return collision_array
-
-	def update_isolated_mask(self):
-		""" Compute the mask of isolated vehicles. Only for restricted fleets. """
-
-		# Get the distance matrix #
-		distance = self.get_distance_matrix()
-		# Delete the diagonal (self-distance, always 0) #
-		self.distance_between_agents = distance[~np.eye(distance.shape[0], dtype=bool)].reshape(distance.shape[0], -1)
-		# True if all agents are further from the danger distance
-		danger_of_isolation_mask = self.distance_between_agents > self.optimal_connection_distance
-		self.danger_of_isolation = np.asarray([self.majority(value) for value in danger_of_isolation_mask])
-		# True if all agents are further from the max connection distance
-		isolation_mask = self.distance_between_agents > self.max_connection_distance
-		self.isolated_mask = np.asarray([self.majority(value) for value in isolation_mask])
-		self.number_of_disconnections += np.sum(self.isolated_mask)
 
 	def measure(self, gt_field):
 
@@ -255,7 +226,6 @@ class DiscreteFleet:
 		self.measured_values = None
 		self.measured_locations = None
 		self.fleet_collisions = 0
-		self.number_of_disconnections = 0
 
 		# Get the redundancy mask #
 		self.redundancy_mask = np.sum([veh.detection_mask for veh in self.vehicles], axis=0)
@@ -263,8 +233,6 @@ class DiscreteFleet:
 		self.collective_mask = self.redundancy_mask.astype(bool)
 		self.historic_visited_mask = self.redundancy_mask.astype(bool)
 		self.new_visited_mask = self.historic_visited_mask
-
-		self.update_isolated_mask()
 
 	def get_distances(self):
 		return [self.vehicles[k].distance for k in range(self.number_of_vehicles)]
@@ -302,13 +270,8 @@ class MultiAgentPatrolling(gym.Env):
 				 movement_length=2,
 				 max_collisions=5,
 				 forget_factor=1.0,
-				 networked_agents=False,
-				 max_connection_distance=10,
-				 optimal_connection_distance=5,
-				 max_number_of_disconnections=10,
 				 attrition=0.0,
 				 obstacles=False,
-				 hard_penalization=False,
 				 reward_type='Double reward',
 				 reward_weights = (10.0, 1.0),
 				 ground_truth_type='algae_bloom',
@@ -346,8 +309,6 @@ class MultiAgentPatrolling(gym.Env):
 		self.forget_factor = forget_factor
 		self.attrition = attrition
 		# Fleet of N vehicles
-		self.optimal_connection_distance = optimal_connection_distance
-		self.max_connection_distance = max_connection_distance
 		self.movement_length = movement_length
 		self.reward_weights = reward_weights
 		
@@ -357,9 +318,7 @@ class MultiAgentPatrolling(gym.Env):
 								   fleet_initial_positions=self.initial_positions,
 								   movement_length=movement_length,
 								   detection_length=detection_length,
-								   navigation_map=self.scenario_map,
-								   max_connection_distance=self.max_connection_distance,
-								   optimal_connection_distance=self.optimal_connection_distance)
+								   navigation_map=self.scenario_map)
 
 		self.max_collisions = max_collisions
 		self.ground_truth_type = ground_truth_type
@@ -402,11 +361,6 @@ class MultiAgentPatrolling(gym.Env):
 		
 		self.individual_action_state = gym.spaces.Discrete(8)
 
-		self.networked_agents = networked_agents
-		self.hard_networked_penalization = hard_penalization
-		self.number_of_disconnections = 0
-		self.max_number_of_disconnections = max_number_of_disconnections
-
 		self.reward_normalization_value = self.fleet.vehicles[0].detection_mask
 
 		# Metrics
@@ -425,6 +379,7 @@ class MultiAgentPatrolling(gym.Env):
 		self.instantaneous_global_idleness_exp = None
 		self.sum_global_idleness_exp = None
 		self.average_global_idleness_exp = None
+  
 	def reset(self):
 		""" Reset the environment """
 
@@ -512,28 +467,41 @@ class MultiAgentPatrolling(gym.Env):
 			self.known_information[np.where(self.fleet.historic_visited_mask)] = self.model[np.where(self.fleet.historic_visited_mask)]
 		else:
 			self.known_information = self.gt.read()
+		if False:
+			# Create fleet position #
+			fleet_position_map = np.zeros_like(self.scenario_map)
+			fleet_position_map[self.fleet.agent_positions[:,0], self.fleet.agent_positions[:,1]] = 1.0
 
-		# Create fleet position #
-		fleet_position_map = np.zeros_like(self.scenario_map)
-		fleet_position_map[self.fleet.agent_positions[:,0], self.fleet.agent_positions[:,1]] = 1.0
+			# State 3 and 4
+			for i in range(self.number_of_agents):
+				
+				agent_observation_of_fleet = fleet_position_map.copy()
+				agent_observation_of_fleet[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 0.0
 
-		# State 3 and 4
-		for i in range(self.number_of_agents):
-			
-			agent_observation_of_fleet = fleet_position_map.copy()
-			agent_observation_of_fleet[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 0.0
-
-			agent_observation_of_position = np.zeros_like(self.scenario_map)
-			agent_observation_of_position[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 1.0
-			
-			state[i] = np.concatenate((
-				obstacle_map[np.newaxis],
-				self.idleness_matrix[np.newaxis],
-				self.known_information[np.newaxis],
-				agent_observation_of_position[np.newaxis],
-				agent_observation_of_fleet[np.newaxis]
-			))
-
+				agent_observation_of_position = np.zeros_like(self.scenario_map)
+				agent_observation_of_position[self.fleet.agent_positions[i,0], self.fleet.agent_positions[i,1]] = 1.0
+				
+				state[i] = np.concatenate((
+					obstacle_map[np.newaxis],
+					self.idleness_matrix[np.newaxis],
+					self.known_information[np.newaxis],
+					agent_observation_of_position[np.newaxis],
+					agent_observation_of_fleet[np.newaxis]
+				))
+		else:
+			# State 3 and 4
+			for i in range(self.number_of_agents):
+       
+				agent_observation_of_position = self.fleet.vehicles[i].detection_mask.copy()
+				agent_observation_of_fleet = self.fleet.redundancy_mask.copy() - agent_observation_of_position
+				
+				state[i] = np.concatenate((
+					obstacle_map[np.newaxis],
+					self.idleness_matrix[np.newaxis],
+					self.known_information[np.newaxis],
+					agent_observation_of_position[np.newaxis],
+					agent_observation_of_fleet[np.newaxis]
+				))
 		self.state = {agent_id: state[agent_id] for agent_id in range(self.number_of_agents) if self.active_agents[agent_id]}
 
 	def step(self, action: dict):
@@ -561,23 +529,10 @@ class MultiAgentPatrolling(gym.Env):
 		# Update metrics
 		self.steps += 1
 		self.update_metrics()
-
-		# Manage reward v3
-		global_idl= [self.instantaneous_global_idleness, self.instantaneous_global_idleness_exp]
-		cost_idl = {agent_id: 1 if 'v3' not in self.reward_type else global_idl for agent_id,rew in reward.items()}
-		reward = {agent_id: rew / cost_idl[agent_id] if np.all(rew)>0 else rew for agent_id,rew in reward.items()}
   
 		# Final condition #
 		done = {agent_id: self.fleet.get_distances()[agent_id] > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions for agent_id in range(self.number_of_agents)}
 		self.active_agents = [not d for d in done.values()]
-
-		if self.networked_agents:
-
-			if self.fleet.number_of_disconnections > self.max_number_of_disconnections and self.hard_networked_penalization:
-				
-				for key in done.keys():
-					done[key] = True
-
 		
 		# Update ground truth
 		self.gt.step()
@@ -639,7 +594,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		if self.fig is None:
 
-			self.fig, self.axs = plt.subplots(1, 7, figsize=(15,5))
+			self.fig, self.axs = plt.subplots(1, 8, figsize=(15,5))
 			
 			# Print the obstacles map
 			self.im0 = self.axs[0].imshow(self.state[agente_disponible][0], cmap = background_colormap)
@@ -684,6 +639,10 @@ class MultiAgentPatrolling(gym.Env):
 			# Others-than-Agent 0 position #
 			self.im6 = self.axs[6].imshow(self.state[agente_disponible][4], cmap = 'gray')
 			self.axs[6].set_title("Others agents position")
+			# Redundacy
+			
+			self.im7 = self.axs[7].imshow(self.fleet.redundancy_mask, cmap = 'gray')
+			self.axs[7].set_title("Redundacy Mask")
 
 		self.im0.set_data(self.state[agente_disponible][0])
 		self.im1.set_data(self.state[agente_disponible][1])
@@ -701,6 +660,10 @@ class MultiAgentPatrolling(gym.Env):
 		real_gt[self.visitable_locations[:,0], self.visitable_locations[:,1]] = self.gt.read()[self.visitable_locations[:,0], self.visitable_locations[:,1]]
 		self.im4.set_data(real_gt)
 		self.im6.set_data(self.state[agente_disponible][4])
+  
+		redun_mask = np.zeros_like(self.scenario_map)*np.nan
+		redun_mask[np.where(self.scenario_map == 1)] = self.fleet.redundancy_mask[np.where(self.scenario_map == 1)]
+		self.im7.set_data(redun_mask)
 
 		self.fig.canvas.draw()
 		self.fig.canvas.flush_events()
@@ -713,16 +676,22 @@ class MultiAgentPatrolling(gym.Env):
 		""" Reward function:
 			r(t) = Sum(I(m)*W(m)/Dr(m)) - Pc - Pn
 		"""
-		if 'v4' in self.reward_type:
-			rewards_information_global = np.sum(self.importance_matrix[self.fleet.collective_mask] * self.idleness_matrix[
-			self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
-			self.fleet.collective_mask]))
-			rewards_exploration_global = 0.2*np.sum((1+self.fleet.new_visited_mask[self.fleet.collective_mask].astype(np.float32))*self.idleness_matrix[
-					self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
-						self.fleet.collective_mask])) 
+		rewards_information_global = np.sum(self.importance_matrix[self.fleet.collective_mask] * self.idleness_matrix[
+		self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
+		self.fleet.collective_mask]))
+		rewards_exploration_global = 0.2*np.sum((1+self.fleet.new_visited_mask[self.fleet.collective_mask].astype(np.float32))*self.idleness_matrix[
+				self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
+					self.fleet.collective_mask])) 
 
+		self.info = {} 
+		if 'metrics global' in self.reward_type:
+			rewards = {agent_id: np.array([rewards_information_global, rewards_exploration_global])
+              				if not collision_mask[agent_id] else -1.0*np.ones(2) for agent_id in actions.keys()}
+			return {agent_id: rewards[agent_id] for agent_id in range(self.number_of_agents) if
+					self.active_agents[agent_id]}
+   
+		if 'v4' in self.reward_type:
 			rews = []
-			self.info = {} 
    
 			for agent_id in range(self.number_of_agents):
 				rew_without_i = np.sum([veh.detection_mask if id!=agent_id else np.zeros_like(veh.detection_mask) for id,veh in enumerate(self.fleet.vehicles)], axis=0)
@@ -745,31 +714,19 @@ class MultiAgentPatrolling(gym.Env):
 				veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
 
-
-		if 'v2' not in self.reward_type:
-			rewards_exploration = 0.2*np.array(
-			[np.sum(self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32) / (
-						1 * self.detection_length * self.fleet.redundancy_mask[
+		rewards_exploration = 0.2*np.array(
+			[np.sum((1+self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32))*self.idleness_matrix[
+				veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[
 					veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
 		)
-		else:
-			rewards_exploration = 0.2*np.array(
-				[np.sum((1+self.fleet.new_visited_mask[veh.detection_mask.astype(bool)].astype(np.float32))*self.idleness_matrix[
-					veh.detection_mask.astype(bool)] / (1 * self.detection_length * self.fleet.redundancy_mask[
-						veh.detection_mask.astype(bool)])) for veh in self.fleet.vehicles]
-			)
-		"""
-		## if all the vehicles have discovered a new area (v2)
-		if 0 in rewards_exploration:
-			rewards_exploration = 2*rewards_exploration
-		"""
+
 		rewards = np.vstack((rewards_information, rewards_exploration)).T
 
 		self.info = {}
 
 		#cost = {agent_id: 1 if action % 2 == 0 else np.sqrt(2) for agent_id, action in actions.items()}
 		distances = [dist/self.detection_length for dist in self.fleet.get_distances()]
-		cost = {agent_id: 1 if 'v4' not in self.reward_type else distances[agent_id] for agent_id in range(self.fleet.number_of_vehicles)}
+		cost = {agent_id: 1 if 'vx' not in self.reward_type else distances[agent_id] for agent_id in range(self.fleet.number_of_vehicles)}
 		rewards = {agent_id: rewards[agent_id] / cost[agent_id] if not collision_mask[agent_id] else -1.0*np.ones(2) / cost[agent_id] for
 				   agent_id in actions.keys()}
 		return {agent_id: rewards[agent_id] for agent_id in range(self.number_of_agents) if
@@ -812,9 +769,6 @@ class MultiAgentPatrolling(gym.Env):
 			'forgetting_factor': self.forget_factor,
 			'attrition': self.attrition,
 			'reward_type': self.reward_type,
-			'networked_agents': self.networked_agents,
-			'optimal_connection_distance': self.optimal_connection_distance,
-			'max_connection_distance': self.max_connection_distance,
 			'ground_truth': self.ground_truth_type,
 			'reward_weights': self.reward_weights,
 			'frame_stacking': self.num_of_frame_stacking,
@@ -849,7 +803,6 @@ if __name__ == '__main__':
 							   max_collisions=500,
 							   forget_factor=0.5,
 							   attrition=0.1,
-							   networked_agents=False,
 							   ground_truth_type='algae_bloom',
 							   obstacles=False,
 							   frame_stacking=2,
@@ -892,3 +845,8 @@ if __name__ == '__main__':
 	plt.legend([f'Agent {i}' for i in range(N)])
 	plt.grid()
 	plt.show()
+
+# to print with colorbar 
+"""fig,ax=plt.subplots()
+im = ax.imshow(env.im1.get_array(),cmap='rainbow_r',vmin=0,vmax=1.0)
+plt.colorbar(im,ax=ax)"""

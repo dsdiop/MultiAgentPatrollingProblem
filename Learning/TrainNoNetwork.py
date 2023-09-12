@@ -27,7 +27,6 @@ archs = ['v1','v2']
 i=0
 masked_act = [False, True]
 for arch in archs:
-
     env = MultiAgentPatrolling(scenario_map=sc_map,
                             fleet_initial_positions=initial_positions,
                             distance_budget=200,
@@ -63,7 +62,7 @@ for arch in archs:
                                         noisy=False,
                                         nettype=nettype,
                                         archtype=arch,
-                                        device='cuda:1',
+                                        device='cuda:0',
                                         weighted=False,
                                         train_every=15,
                                         save_every=1000,
@@ -74,7 +73,6 @@ for arch in archs:
                                         eval_episodes=10,
                                         masked_actions= True,
                                         eval_every=1000,
-                                        use_dwa=False,
                                         weighting_method=ww,
                                         weight_methods_parameters=wm
                                         )

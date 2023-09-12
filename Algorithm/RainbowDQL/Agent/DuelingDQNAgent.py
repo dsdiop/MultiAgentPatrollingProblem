@@ -10,7 +10,7 @@ import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer,  PrioritizedReplayBufferNrewards
 from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork, DQFDuelingVisualNetwork
-from Algorithm.RainbowDQL.ActionMasking.ActionMaskingUtils import NoGoBackMasking, SafeActionMasking
+from Algorithm.RainbowDQL.ActionMasking.ActionMaskingUtils import SafeActionMasking, ConsensusSafeActionMasking
 import torch.nn.functional as F
 from tqdm import trange
 from copy import copy
@@ -61,7 +61,7 @@ class MultiAgentDuelingDQNAgent:
 			eval_episodes=1000,
 			# Masked actions
 			masked_actions= True,
-			use_dwa= False,
+			consensus= True,
       weighting_method=None,
       weight_methods_parameters = None
 	):
@@ -116,6 +116,7 @@ class MultiAgentDuelingDQNAgent:
 		self.archtype = archtype
 		self.weighted = weighted
 		self.masked_actions = masked_actions
+		self.consensus = consensus
         
 		self.use_nu = use_nu
 		if self.use_nu:
@@ -149,9 +150,6 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
 			self.loss_expl = deque(maxlen=3)
 			self.loss_inf = deque(maxlen=3)
-			self.use_dwa = use_dwa
-			if use_dwa:
-				self.index=0
 			self.weighting_method_name = weighting_method
 			self.weighting_method = None
 			if weighting_method is not None:
@@ -184,9 +182,12 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn_target.reset_noise()
 
 		# Masking utilities #
-		self.safe_masking_module = SafeActionMasking(action_space_dim = action_dim, movement_length = self.env.movement_length)
-		self.nogoback_masking_modules = {i: NoGoBackMasking() for i in range(self.env.number_of_agents)}
-
+		if self.masked_actions:
+			self.safe_masking_module = SafeActionMasking(action_space_dim = action_dim, movement_length = self.env.movement_length)
+		
+		if self.consensus:
+			self.consensus_safe_action_masking = ConsensusSafeActionMasking(self.env.scenario_map, action_space_dim = action_dim, movement_length = self.env.movement_length)
+			self.q_values4consensus = -np.inf*np.ones((self.env.number_of_agents, self.env.action_space.n))
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
 	def choose_q_function(self, state: np.ndarray):
@@ -228,9 +229,7 @@ class MultiAgentDuelingDQNAgent:
 		if self.epsilon > np.random.rand() and not self.noisy:
 
 			# Compute randomly the action #
-			q_values, _ = self.safe_masking_module.mask_action(q_values = None)
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+			q_values, selected_action = self.safe_masking_module.mask_action(q_values = None)
 
 		else:
 			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
@@ -239,13 +238,13 @@ class MultiAgentDuelingDQNAgent:
 			else:
 				q_values = q_values.squeeze(0)[:self.action_dim]
     
-			q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
-				
-
-
+			q_values, selected_action = self.safe_masking_module.mask_action(q_values = q_values.flatten())
+                                                                    
+		if self.consensus:
+			self.q_values4consensus[agent_id] = q_values
+   
 		return selected_action
+
 	def predict_masked_action(self, state: np.ndarray, agent_id: int, position: np.ndarray):
 		""" Select an action masked to avoid collisions and so """
 
@@ -255,16 +254,14 @@ class MultiAgentDuelingDQNAgent:
 		if self.epsilon > np.random.rand() and not self.noisy:
 
 			# Compute randomly the action #
-			q_values, _ = self.safe_masking_module.mask_action(q_values = None)
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
+			q_values, selected_action = self.safe_masking_module.mask_action(q_values = None)
 
 		else:
 			q_values = self.dqn(torch.FloatTensor(state).unsqueeze(0).to(self.device)).detach().cpu().numpy()
-			q_values, _ = self.safe_masking_module.mask_action(q_values = q_values.flatten())
-			q_values, selected_action = self.nogoback_masking_modules[agent_id].mask_action(q_values = q_values)
-			self.nogoback_masking_modules[agent_id].update_last_action(selected_action)
-
+			q_values, selected_action = self.safe_masking_module.mask_action(q_values = q_values.flatten())
+		if self.consensus:
+			self.q_values4consensus[agent_id] = q_values
+  
 		return selected_action
 
 
@@ -279,10 +276,15 @@ class MultiAgentDuelingDQNAgent:
 		return actions
 
 	def select_masked_action(self, states: dict, positions: np.ndarray):
+		
 		if self.use_nu:
 			actions = {agent_id: self.choose_q_function_masked_action(state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
 		else:
 			actions = {agent_id: self.predict_masked_action(state=state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
+		if self.consensus:
+			actions = self.consensus_safe_action_masking.query_actions(np.asarray(self.q_values4consensus),positions)
+			actions = {agent_id: actions[agent_id] for agent_id, state in states.items()}
+			self.q_values4consensus = -np.inf*np.ones((self.env.number_of_agents, self.env.action_space.n))
 
 		return actions
 
@@ -306,17 +308,7 @@ class MultiAgentDuelingDQNAgent:
 		# PER: importance sampling before average
 		if self.use_nu:
 			elementwise_loss= self._compute_ddqn_multihead_loss(samples)
-			#self.loss_inf=torch.cat((self.loss_inf[1:], elementwise_loss[0]))
-			#self.loss_expl=torch.cat((self.loss_expl[1:], elementwise_loss[1]))
-			#self.loss_inf.append(torch.mean(elementwise_loss[0] * weights))
-			#self.loss_expl.append(torch.mean(elementwise_loss[1] * weights))
 			if self.weighting_method is not None:
-				"""
-				with torch.no_grad():
-					self.compute_dwa()
-				loss = self.lambda_weight[0]*self.loss_inf[-1] + self.lambda_weight[1]*self.loss_expl[-1]
-        """
-				
 				losses = torch.cat([torch.mean(elementwise_loss[i] * weights).reshape(1) for i in range(len(elementwise_loss))])
 				loss, extra_outputs = self.weighting_method.backward(
                 losses=losses,
@@ -404,17 +396,7 @@ class MultiAgentDuelingDQNAgent:
 			second_p = p4
 
 		return (second_p[1] - first_p[1]) / (second_p[0] - first_p[0]) * (p - first_p[0]) + first_p[1]
-	@staticmethod
-	def anneal_epsilon2(p, p1=[0., 1], p2=[0.5, 0.1], p3=[1., 0.05]):
 
-		if p <= p2[0]:
-			first_p = p1
-			second_p = p2
-		elif p <= p3[0]:
-			first_p = p2
-			second_p = p3
-
-		return (second_p[1] - first_p[1]) / (second_p[0] - first_p[0]) * (p - first_p[0]) + first_p[1]
 	@staticmethod
 	def anneal_epsilon(p, p_init=0.1, p_fin=0.9, e_init=1.0, e_fin=0.0):
 
@@ -481,7 +463,6 @@ class MultiAgentDuelingDQNAgent:
 			                                   p_fin=self.epsilon_interval[1],
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
-   			
 			# Run an episode #
 			while not all(done.values()):
 
@@ -494,7 +475,6 @@ class MultiAgentDuelingDQNAgent:
 											 p4=self.nu_intervals[3])
 				# Increase the played steps #
 				steps += 1
-
 				# Select the action using the current policy
 				
 				if not self.masked_actions:
@@ -506,6 +486,10 @@ class MultiAgentDuelingDQNAgent:
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
 				# Process the agent step #
 				next_state, reward, done = self.step(actions)
+
+				for key, lista in reward.items():
+					if -1 in lista:
+						print(f"En la lista '{key}' se encontró el valor -1.")
 				for agent_id in actions.keys():
 
 					# Store every observation for every agent
@@ -593,20 +577,7 @@ class MultiAgentDuelingDQNAgent:
 
 		# Save the final policy #
 		self.save_model(name='Final_Policy.pth')
-	def compute_dwa(self):
-		# apply Dynamic Weight Average
-		T=2
-		if self.index == 0 or self.index == 1:
-			self.lambda_weight= [1.0, 1.0]
-		else:
-			n_tasks = 2
-			w = []
-			w.append(self.loss_inf[1] / self.loss_inf[0])
-			w.append(self.loss_expl[1] / self.loss_expl[0])
-			self.lambda_weight[0] = n_tasks * torch.exp(w[0] / T) / (torch.exp(w[0] / T) + torch.exp(w[1]/ T))
-			self.lambda_weight[1] = n_tasks * torch.exp(w[1] / T) / (torch.exp(w[0] / T) + torch.exp(w[1]/ T))
-		self.index += 1
-			
+
 	def _compute_ddqn_multihead_loss(self, samples: Dict[str, np.ndarray]) -> torch.Tensor:
 
 		"""Return dqn loss."""
@@ -844,7 +815,8 @@ class MultiAgentDuelingDQNAgent:
 			"nu_intervals": self.nu_intervals,
             "nettype": self.nettype,
             "archtype": self.archtype,
-            "masked_actions": self.masked_actions
+            "masked_actions": self.masked_actions,
+            "consensus": self.consensus
 		}
 
 		with open(self.writer.log_dir + '/experiment_config.json', 'w') as f:
