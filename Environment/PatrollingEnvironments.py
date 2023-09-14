@@ -182,7 +182,7 @@ class DiscreteFleet:
 		# Sum up the collisions for termination #
 		self.fleet_collisions = np.sum([self.vehicles[k].num_of_collisions for k in range(self.number_of_vehicles)])
 		# Compute the redundancy mask #
-		self.redundancy_mask = np.sum([veh.detection_mask for veh in self.vehicles], axis=0)
+		self.redundancy_mask = np.sum([self.vehicles[agent_id].detection_mask for agent_id in fleet_actions.keys()], axis=0)
 		# Update the collective mask #
 		self.collective_mask = self.redundancy_mask.astype(bool)
 		# Update the historic visited mask #
@@ -545,8 +545,10 @@ class MultiAgentPatrolling(gym.Env):
 		self.model_ant = self.model.copy()
 
 		gt_ = np.clip(self.gt.read(),self.minimum_importance,999999)
-		for vehicle in self.fleet.vehicles:
-			self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
+		for idx, vehicle in enumerate(self.fleet.vehicles):
+			if self.active_agents[idx]:
+				self.model[vehicle.detection_mask.astype(bool)] = gt_[vehicle.detection_mask.astype(bool)]
+    
 	def update_metrics(self):
 		instantaneous_node_idleness = np.copy(self.scenario_map)
 		instantaneous_node_idleness_exp = np.copy(self.scenario_map)
@@ -694,7 +696,7 @@ class MultiAgentPatrolling(gym.Env):
 			rews = []
    
 			for agent_id in range(self.number_of_agents):
-				rew_without_i = np.sum([veh.detection_mask if id!=agent_id else np.zeros_like(veh.detection_mask) for id,veh in enumerate(self.fleet.vehicles)], axis=0)
+				rew_without_i = np.sum([veh.detection_mask if id!=agent_id else np.zeros_like(veh.detection_mask) for id,veh in enumerate(self.fleet.vehicles) if self.active_agents[id]], axis=0)
 				rewards_information_without_i = np.sum(self.importance_matrix[rew_without_i.astype(bool)] * self.idleness_matrix[
 				rew_without_i.astype(bool)] / (1 * self.detection_length * rew_without_i[rew_without_i.astype(bool)]))
     
@@ -819,7 +821,7 @@ if __name__ == '__main__':
 
 	action = {i: np.random.randint(0,8) for i in range(N)}
 
-	while not any(list(done.values())):
+	while not all(done.values()):
 
 		for idx, agent in enumerate(env.fleet.vehicles):
 		
@@ -828,9 +830,8 @@ if __name__ == '__main__':
 			if agent_mask[action[idx]]:
 				action[idx] = np.random.choice(np.arange(8), p=(1-agent_mask)/np.sum((1-agent_mask)))
 		s, r, done, _ = env.step(action)
-		print(env.fleet.get_positions() )
+		print(env.steps)
 		env.render()
-
 		R.append(list(r.values()))
 
 		print(r)

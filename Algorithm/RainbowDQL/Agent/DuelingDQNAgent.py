@@ -187,7 +187,7 @@ class MultiAgentDuelingDQNAgent:
 		
 		if self.consensus:
 			self.consensus_safe_action_masking = ConsensusSafeActionMasking(self.env.scenario_map, action_space_dim = action_dim, movement_length = self.env.movement_length)
-			self.q_values4consensus = -np.inf*np.ones((self.env.number_of_agents, self.env.action_space.n))
+			self.q_values4consensus = {agent_id: np.zeros((1, self.env.action_space.n)) for agent_id in range(self.env.number_of_agents)}
 	# TODO: Implement an annealed Learning Rate (see:
 	#  https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html#torch.optim.lr_scheduler.ReduceLROnPlateau)
 	def choose_q_function(self, state: np.ndarray):
@@ -276,15 +276,18 @@ class MultiAgentDuelingDQNAgent:
 		return actions
 
 	def select_masked_action(self, states: dict, positions: np.ndarray):
-		
+    
+		if self.consensus:
+			self.q_values4consensus = {agent_id: np.zeros((1, self.env.action_space.n)) for agent_id, state in states.items()}
+   
 		if self.use_nu:
 			actions = {agent_id: self.choose_q_function_masked_action(state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
 		else:
 			actions = {agent_id: self.predict_masked_action(state=state, agent_id=agent_id, position=positions[agent_id]) for agent_id, state in states.items()}
+   
 		if self.consensus:
-			actions = self.consensus_safe_action_masking.query_actions(np.asarray(self.q_values4consensus),positions)
+			actions = self.consensus_safe_action_masking.query_actions(self.q_values4consensus,positions)
 			actions = {agent_id: actions[agent_id] for agent_id, state in states.items()}
-			self.q_values4consensus = -np.inf*np.ones((self.env.number_of_agents, self.env.action_space.n))
 
 		return actions
 
@@ -729,7 +732,6 @@ class MultiAgentDuelingDQNAgent:
 		self.dqn.load_state_dict(torch.load(path_to_file, map_location=self.device))
 
 	def save_model(self, name='experiment.pth'):
-
 		torch.save(self.dqn.state_dict(), self.writer.log_dir + '/' + name)
 
 	def evaluate_agents(self, eval_episodes, render=False):

@@ -72,7 +72,7 @@ class ConsensusSafeActionMasking:
 		self.fleet_map = np.zeros_like(navigation_map)
 
 
-	def query_actions(self, q_values: np.ndarray, positions: np.ndarray):
+	def query_actions(self, q_values, positions: np.ndarray):
 
 		# 1) The largest q-value agent decides first
 		# 2) If there are multiple agents with the same q-value, the agent is selected randomly
@@ -80,8 +80,12 @@ class ConsensusSafeActionMasking:
 		# 4) The next agent is selected based on the updated fleet map, etc
 		
 		self.fleet_map = np.ones_like(self.fleet_map)
-		agents_order = np.argsort(q_values.max(axis=1))[::-1]
-		final_actions = np.zeros(q_values.shape[0], dtype=int)
+		q_values_array = np.array(list(q_values.values()))
+		sorted_indices = np.argsort(q_values_array.max(axis=1))[::-1]
+		agents_order = np.array(list(q_values.keys()))[sorted_indices]
+
+		#agents_order = np.argsort(q_values.max(axis=1))[::-1]
+		final_actions = np.zeros(q_values_array.shape[0], dtype=int)
 
 		for agent in agents_order:
 			
@@ -104,7 +108,7 @@ class ConsensusSafeActionMasking:
 
 			# Store the action
 			final_actions[agent] = action.copy()
-		return {agent: final_actions[agent] for agent in range(q_values.shape[0])}
+		return {agent: final_actions[agent] for agent in range(q_values_array.shape[0])}
 
 
 class ConsensusSafeActionDistributionMasking:
