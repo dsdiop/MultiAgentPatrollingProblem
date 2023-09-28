@@ -779,7 +779,7 @@ class MultiAgentPatrolling(gym.Env):
 		}
 
 		with open(path + '/environment_config.json', 'w') as f:
-			json.dump(environment_configuration, f)
+			json.dump(environment_configuration, f, indent=4)
 
 
 

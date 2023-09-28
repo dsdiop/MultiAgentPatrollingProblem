@@ -493,15 +493,20 @@ class MultiAgentDuelingDQNAgent:
 				for key, lista in reward.items():
 					if -1 in lista:
 						print(f"En la lista '{key}' se encontró el valor -1.")
+						print('Actions: ',actions)
+						print('Positions: ', self.env.fleet.get_positions())
+						print('Distances: ', self.env.fleet.get_distances())
 				for agent_id in actions.keys():
-
+					"""agent_id = np.random.randint(0, self.env.number_of_agents) ##########################################
+					while agent_id not in actions.keys():
+						agent_id = np.random.randint(0, self.env.number_of_agents)"""
 					# Store every observation for every agent
 					self.transition = [state[agent_id],
-					                   actions[agent_id],
-					                   reward[agent_id],
-					                   next_state[agent_id],
-					                   done[agent_id],
-					                   {'nu': self.nu}]
+										actions[agent_id],
+										reward[agent_id],
+										next_state[agent_id],
+										done[agent_id],
+										{'nu': self.nu}]
 
 					self.memory.store(*self.transition)
 

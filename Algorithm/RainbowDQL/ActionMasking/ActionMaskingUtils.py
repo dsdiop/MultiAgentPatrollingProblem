@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch.nn.functional import softmax
+from copy import deepcopy
 
 class SafeActionMasking:
 
@@ -82,33 +83,52 @@ class ConsensusSafeActionMasking:
 		self.fleet_map = np.ones_like(self.fleet_map)
 		q_values_array = np.array(list(q_values.values()))
 		sorted_indices = np.argsort(q_values_array.max(axis=1))[::-1]
-		agents_order = np.array(list(q_values.keys()))[sorted_indices]
+		agents_order = list(np.array(list(q_values.keys()))[sorted_indices])
 
 		#agents_order = np.argsort(q_values.max(axis=1))[::-1]
-		final_actions = np.zeros(q_values_array.shape[0], dtype=int)
+		final_actions = {agent_id: 0 for agent_id in q_values.keys()}
+		not_solved = True
+		count = 0
+		while not_solved:
+			count = count + 1
+			q_values_copy = deepcopy(q_values)
+			self.fleet_map = np.ones_like(self.fleet_map)
+			for idx,agent in enumerate(agents_order):
+				# Unpack the agent position
+				agent_position = positions[agent]
+				# Compute the impossible actions
+				movements = np.asarray([np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])) for angle in self.angle_set]).astype(int)
+				#movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])) * self.movement_length for angle in self.angle_set]).astype(int)
+				next_positions = agent_position + movements
+				action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
+				# Censor the impossible actions in the Q-values
+				q_values_copy[agent][action_mask] = -np.inf
+				# If all the actions of the are impossible, the agent should make the first move
+				if all(q_value == -np.inf for q_value in q_values_copy[agent]):
+					agents_order = [agent] + agents_order[:idx] + agents_order[idx+1:]
+					break
+				# Select the action
+				action = np.argmax(q_values_copy[agent])
 
-		for agent in agents_order:
-			
-			# Unpack the agent position
-			agent_position = positions[agent]
-			# Compute the impossible actions
-			movements = np.asarray([np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])) for angle in self.angle_set]).astype(int)
-			#movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])) * self.movement_length for angle in self.angle_set]).astype(int)
-			next_positions = agent_position + movements
-			action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
-			# Censor the impossible actions in the Q-values
-			q_values[agent][action_mask] = -np.inf
+				# Update the fleet map
+				next_position = next_positions[action]
+				self.fleet_map[int(next_position[0]), int(next_position[1])] = 0
 
-			# Select the action
-			action = np.argmax(q_values[agent])
-
-			# Update the fleet map
-			next_position = next_positions[action]
-			self.fleet_map[int(next_position[0]), int(next_position[1])] = 0
-
-			# Store the action
-			final_actions[agent] = action.copy()
-		return {agent: final_actions[agent] for agent in range(q_values_array.shape[0])}
+				# Store the action
+				final_actions[agent] = action.copy()
+				if idx == len(agents_order) - 1:
+					not_solved = False
+			if not_solved:
+				print(f"Changed Agents order")
+				print(f"agents_order: {agents_order}")
+				print(f"q_values: {q_values}")
+				print(f"q_values_copy: {q_values_copy}")
+				print(f"count: {count}, idx: {idx}")
+				print(f"positions: {positions}")
+				print(self.fleet_map)
+			if count == 100:
+				breakpoint()
+		return {agent: final_actions[agent] for agent in q_values.keys()}
 
 
 class ConsensusSafeActionDistributionMasking:
