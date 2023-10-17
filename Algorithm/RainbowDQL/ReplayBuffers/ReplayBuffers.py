@@ -1,8 +1,12 @@
+import sys
+import os
+data_path = os.path.join(os.path.dirname(__file__), '..','..','..')
+sys.path.append(data_path)
 import numpy as np
 from collections import deque
 from typing import Deque, Dict, Tuple, List, Union
 #from utils import MinSegmentTree, SumSegmentTree
-from ..ReplayBuffers.utils import MinSegmentTree, SumSegmentTree
+from Algorithm.RainbowDQL.ReplayBuffers.utils import MinSegmentTree, SumSegmentTree
 import random
 
 class ReplayBuffer:
@@ -168,11 +172,15 @@ class ReplayBufferNrewards:
 	@staticmethod
 	def _get_n_step_info(n_step_buffer: Deque, gamma: float) -> Tuple[np.int64, np.ndarray, bool, dict]:
 		"""Return n step rew, next_obs, and done."""
+		# Find the index of the first step where done=True in the n_step_buffer.
+		done_index = next((i for i, transition in enumerate(n_step_buffer) if transition[-2]), len(n_step_buffer))
+		n_step_buffer_truncated = list(n_step_buffer)[:done_index+1]
+		
 		# info of the last transition
-		rew, next_obs, done, info = n_step_buffer[-1][-4:]
+		rew, next_obs, done, info = n_step_buffer_truncated[-1][-4:]
 
-		for transition in reversed(list(n_step_buffer)[:-1]):
-			r, n_o, d = transition[-3:]
+		for transition in reversed(n_step_buffer_truncated[:-1]):
+			r, n_o, d, _ = transition[-4:]
 			rew = r + gamma * rew * (1 - d)
 			next_obs, done = (n_o, d) if d else (next_obs, done)
 
@@ -416,11 +424,18 @@ class PrioritizedReplayBufferNrewards(ReplayBufferNrewards):
 
 
 if __name__ == '__main__':
-	my_buffer = PrioritizedReplayBufferNrewards((10,5),100)
-	from random import randint
+	my_buffer = PrioritizedReplayBufferNrewards((10,5),100,n_step=5)
+	
 	for _ in range(60):
-		my_buffer.store(np.zeros((10,5)),randint(0,7),randint(0,20),np.zeros((10,5)),True,{})
-	print(my_buffer)
+		 # Genera un número aleatorio entre 0 y 1
+		numero_aleatorio = random.random()
+		# Compara el número aleatorio con la probabilidad dada
+		if numero_aleatorio < 0.03:
+			done = True
+		else:
+			done = False
+		my_buffer.store(np.zeros((10,5)),random.randint(0,7),[random.randint(0,20),random.randint(0,20)],np.zeros((10,5)),done,{})
+	print(my_buffer.sample_batch())
 	pass
 
 
