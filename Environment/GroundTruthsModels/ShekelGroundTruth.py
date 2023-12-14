@@ -14,12 +14,15 @@ class GroundTruth(object):
         and using a Shekel function.
     """
 
-    def __init__(self, grid, max_number_of_peaks=None, is_bounded = True, seed = 0):
+    def __init__(self, grid, max_number_of_peaks=None, is_bounded = True, seed = 0, peaks_location = 'Random'):
 
         """ Maximum number of peaks encountered in the scenario. """
         self.max_number_of_peaks = 6 if max_number_of_peaks is None else max_number_of_peaks
         self.seed = seed
         self.rng = np.random.default_rng(seed=self.seed) # random number generator, it's better than set a np.random.seed() (https://builtin.com/data-science/numpy-random-seed)
+        self.rng_seed_for_steps = np.random.default_rng(seed=self.seed+1)
+        self.rng_steps = np.random.default_rng(seed=self.rng_seed_for_steps.integers(0, 1000000))
+        self.peaks_location = peaks_location
 
         """ random map features creation """
         self.grid = 1.0 - grid
@@ -29,11 +32,15 @@ class GroundTruth(object):
         self.dt = 0.01
 
         # Peaks positions bounded from 1 to 9 in every axis
+        self.peaks_low_limit_dict = {'Upper': [0.1,0], 'MiddleLeft': [0.10,0.45], 'MiddleRight': [0.55,0.4], 'Middle': [0.35,0.45], 'Bottom': [0.67,0.7]}
+        self.peaks_high_limit_dict = {'Upper': [0.6, 0.3], 'MiddleLeft': [0.3, 0.65], 'MiddleRight': [0.8, 0.6], 'Middle': [0.65, 0.62], 'Bottom': [0.9, 0.9]}
         self.number_of_peaks = self.rng.integers(1, self.max_number_of_peaks+1)
-        self.A = self.rng.random((self.number_of_peaks, 2)) * self.xy_size
+        if self.peaks_location == 'Random':
+            self.A = self.rng.random((self.number_of_peaks, 2)) * self.xy_size
+        else: # Delimit peaks
+            self.A = np.array([[self.rng.uniform(low=self.peaks_low_limit_dict[self.peaks_location][0], high=self.peaks_high_limit_dict[self.peaks_location][0], size=None), self.rng.uniform(low=self.peaks_low_limit_dict[self.peaks_location][1], high=self.peaks_high_limit_dict[self.peaks_location][1], size=None)] for _ in range(self.number_of_peaks)]) * self.xy_size
         # Peaks size bounded from a minimum 2.5 to 5
         self.C = self.rng.random((self.number_of_peaks, 1)) + 0.5
-        # # self.C = np.random.rand(self.number_of_peaks, 1) + 0.5
 
         """ Creation of the map field """
         self._x = np.arange(0, self.grid.shape[1], 1)
@@ -69,16 +76,20 @@ class GroundTruth(object):
 
         #self.normalized_z = self.normalized_z.T
 
-
     def reset(self):
         """ Reset ground Truth """
         # Peaks positions bounded from 1 to 9 in every axis
         self.number_of_peaks = self.rng.integers(1,self.max_number_of_peaks+1)
-        self.A = self.rng.random((self.number_of_peaks, 2)) * self.xy_size
+        if self.peaks_location == 'Random':
+            self.A = self.rng.random((self.number_of_peaks, 2)) * self.xy_size
+        else: # Delimit peaks
+            self.A = np.array([[self.rng.uniform(low=self.peaks_low_limit_dict[self.peaks_location][0], high=self.peaks_high_limit_dict[self.peaks_location][0], size=None), self.rng.uniform(low=self.peaks_low_limit_dict[self.peaks_location][1], high=self.peaks_high_limit_dict[self.peaks_location][1], size=None)] for _ in range(self.number_of_peaks)]) * self.xy_size
         # Peaks size bounded from a minimum 2.5 to 5
         self.C = 10*(self.rng.random((self.number_of_peaks, 1)) + 0.5)
         # Reconstruct the field #
         self.create_field()
+        # New seed for steps #
+        self.rng_steps = np.random.default_rng(seed=self.rng_seed_for_steps.integers(0, 1000000))
 
     def read(self, position=None):
 
@@ -103,7 +114,7 @@ class GroundTruth(object):
     def step(self):
         """ Move every maximum with a random walk noise """
 
-        self.A += self.dt*(2*(self.rng.random(*self.A.shape)-0.5) * self.xy_size * 0.9 + self.xy_size*0.1)
+        self.A += self.dt*(2*(self.rng_steps.random([*self.A.shape])-0.5) * self.xy_size * 0.9 + self.xy_size*0.1)
         # self.A += self.dt*(2*(np.random.rand(*self.A.shape)-0.5) * self.xy_size * 0.9 + self.xy_size*0.1)
         self.create_field()
 
@@ -115,21 +126,21 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     ypacarai_map = np.genfromtxt('Environment/Maps/ypacarai_map_low_res.csv',delimiter=',',dtype=float)
-    gt = GroundTruth(ypacarai_map, max_number_of_peaks=6, is_bounded=True, seed=10)
+    gt = GroundTruth(ypacarai_map, max_number_of_peaks=6, is_bounded=True, seed=10, peaks_location='MiddleRight')
+
+    # for i in range(100):
+    #     gt.reset()
+    #     gt.render()
+
+    A_total = np.empty((0, 2), float)
 
     for i in range(100):
         gt.reset()
-        gt.render()
-
-    # A_total = np.empty((0, 2), float)
-
-    # for i in range(1000):
-    #     gt.reset()
-    #     A_total = np.vstack((A_total,gt.A))
+        A_total = np.vstack((A_total,gt.A))
     
-    # plt.imshow(ypacarai_map)
-    # im = plt.plot(A_total[:, 0], A_total[:, 1], 'rx', )
-    # plt.show()
+    plt.imshow(ypacarai_map)
+    im = plt.plot(A_total[:, 0], A_total[:, 1], 'rx', )
+    plt.show()
 
 
 

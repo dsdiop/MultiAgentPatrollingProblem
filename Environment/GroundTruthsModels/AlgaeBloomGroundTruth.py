@@ -12,8 +12,10 @@ class algae_bloom:
 
     def __init__(self, grid: np.ndarray, dt = 0.2, seed = 0) -> None:
         """ Generador de ground truths de algas con dinámica """
-
-        np.random.seed(seed)
+        self.seed = seed
+        self.rng = np.random.default_rng(seed=self.seed) # random number generator, it's better than set a np.random.seed() (https://builtin.com/data-science/numpy-random-seed)
+        self.rng_seed_for_steps = np.random.default_rng(seed=self.seed+1)
+        self.rng_steps = np.random.default_rng(seed=self.rng_seed_for_steps.integers(0, 1000000))        
         # Creamos un mapa vacio #
         self.map = np.zeros_like(grid)
         self.grid = grid
@@ -31,16 +33,18 @@ class algae_bloom:
         self.contour_currents_y = convolve(self.grid, np.array([[0,0,0],[0,1,0],[0,-1,0]]), mode='constant')*2
     def reset(self):
 
-        starting_point = np.array((np.random.randint(self.map.shape[0]/4, 3*self.map.shape[0]/4), np.random.randint(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
-        self.particles = np.random.multivariate_normal(starting_point, np.array([[7.0, 0.0],[0.0, 7.0]]),size=(100,))
+        starting_point = np.array((self.rng.integers(self.map.shape[0]/4, 3*self.map.shape[0]/4), self.rng.integers(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
+        self.particles = self.rng.multivariate_normal(starting_point, np.array([[7.0, 0.0],[0.0, 7.0]]),size=(100,))
         
-        starting_point = np.array((np.random.randint(self.map.shape[0]/4, 3*self.map.shape[0]/4), np.random.randint(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
-        self.particles = np.vstack(( self.particles, np.random.multivariate_normal(starting_point, np.array([[3.0, 0.0],[0.0, 3.0]]),size=(100,))))
+        starting_point = np.array((self.rng.integers(self.map.shape[0]/4, 3*self.map.shape[0]/4), self.rng.integers(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
+        self.particles = np.vstack(( self.particles, self.rng.multivariate_normal(starting_point, np.array([[3.0, 0.0],[0.0, 3.0]]),size=(100,))))
 
         self.in_bound_particles = np.array([particle for particle in self.particles if self.is_inside(particle)])
         self.map[self.in_bound_particles[:,0].astype(int), self.in_bound_particles[:, 1].astype(int)] = 1.0
 
         self.algae_map = gaussian_filter(self.map, 0.8)
+        # New seed for steps #
+        self.rng_steps = np.random.default_rng(seed=self.rng_seed_for_steps.integers(0, 1000000))
         
         return self.algae_map
 
@@ -61,8 +65,8 @@ class algae_bloom:
         
         if self.contour_currents_x[int(position[0]), int(position[1])] == 0.0 or self.contour_currents_y[int(position[0]), int(position[1])] == 0.0:
 
-            u = -(position[1] - self.map.shape[1] / 2) / np.linalg.norm(position - np.array(self.map.shape)/2 + 1e-6) + np.random.rand()
-            v = (position[0] - self.map.shape[0] / 2) / np.linalg.norm(position - np.array(self.map.shape)/2 + 1e-6) + np.random.rand()
+            u = -(position[1] - self.map.shape[1] / 2) / np.linalg.norm(position - np.array(self.map.shape)/2 + 1e-6) + self.rng_steps.random()
+            v = (position[0] - self.map.shape[0] / 2) / np.linalg.norm(position - np.array(self.map.shape)/2 + 1e-6) + self.rng_steps.random()
 
         else:
             u,v = 0,0
@@ -70,7 +74,7 @@ class algae_bloom:
         u,v = np.clip((u,v), -1.0, 1.0)
         
         
-        return np.array((u*np.random.rand(),v*np.random.rand()))
+        return np.array((u*self.rng_steps.random(),v*self.rng_steps.random()))
 
     def is_inside(self, particle):
 
