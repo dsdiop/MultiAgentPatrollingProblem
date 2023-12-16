@@ -1,0 +1,397 @@
+import sys
+import os
+data_path = os.path.join(os.path.dirname(__file__), '..')
+sys.path.append(data_path)
+
+import numpy as np
+import scipy.ndimage as ndimage
+import scipy.ndimage.filters as filters
+import matplotlib.pyplot as plt
+from tqdm import trange
+import pandas as pd
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+
+
+from Evaluation.Utils.metrics_wrapper import MetricsDataCreator
+from Evaluation.Utils.anneal_nu import anneal_nu
+
+from Evaluation.OtherAlgorithms.NRRA import WanderingAgent
+from Evaluation.OtherAlgorithms.LawnMower import LawnMowerAgent
+from Evaluation.OtherAlgorithms.GreedyAgent import GreedyAgent
+
+def find_peaks(data:np.ndarray, neighborhood_size: int = 5, threshold: float = 0.1) -> np.ndarray:
+	""" Find the peaks in a 2D image using the local maximum filter. """
+
+
+	data_max = filters.maximum_filter(data, neighborhood_size)
+	maxima = (data == data_max)
+	data_min = filters.minimum_filter(data, neighborhood_size)
+	diff = ((data_max - data_min) > threshold)
+	maxima[diff == 0] = 0
+
+	labeled, num_objects = ndimage.label(maxima)
+	slices = ndimage.find_objects(labeled)
+	x, y = [], []
+	for dy,dx in slices:
+		x_center = (dx.start + dx.stop - 1)/2
+		x.append(x_center)
+		y_center = (dy.start + dy.stop - 1)/2    
+		y.append(y_center)
+
+	peaks = np.array([y,x]).T.astype(int)
+
+	return peaks, data[peaks[:,0], peaks[:,1]]
+
+
+	
+
+
+def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, 
+			nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+   			render = False,
+      		save = True,	
+      		info = {}):
+	metrics = MetricsDataCreator(metrics_names=['Policy Name',
+											'Mean Weighted Idleness Intensification',
+											'Mean Weighted Idleness Exploration',
+											'Mean Weighted Idleness',
+											'Total Length',
+											'Total Collisions',
+											'Average Global Idleness Intensification',
+											'Average Global Idleness Exploration',
+											'Sum global idleness Intensification',
+											'Percentage Visited Exploration',
+											'Percentage Visited'],
+							algorithm_name=algorithm,
+							experiment_name=f'{algorithm}_Results',
+							directory=path)
+	if os.path.exists(path + algorithm + '_Results.csv'):
+		metrics.load_df(path + algorithm + '_Results.csv')
+		
+	paths = MetricsDataCreator(metrics_names=['vehicle', 'x', 'y'],
+							algorithm_name=algorithm,
+							experiment_name=f'{algorithm}_paths',
+							directory=path)
+	
+	if os.path.exists(path + algorithm + '_paths.csv'):
+		paths.load_df(path + algorithm + '_paths.csv')
+	
+	
+	distance_budget = env.distance_budget
+
+	if algorithm == 'RandomWandering':
+		if 'seed' in info.keys():
+			seed = info['seed']
+		else:
+			seed = 0
+		agents = [WanderingAgent(world = env.scenario_map,
+								number_of_actions = env.fleet.n_actions,
+								movement_length = env.movement_length, seed=seed+i) for i in range(n_agents)]
+	elif algorithm == 'LawnMower':	
+		if 'seed' in info.keys():
+			seed = info['seed']
+		else:
+			seed = 0
+		if 'initial_directions' in info.keys():
+			initial_directions = info['initial_directions']
+		else:
+			initial_directions = [None for _ in range(n_agents)]
+		agents = [LawnMowerAgent(world = env.scenario_map,
+								number_of_actions = env.fleet.n_actions,
+								movement_length = env.movement_length,
+								forward_direction = initial_directions[i],
+								seed=seed) for i in range(n_agents)]
+	elif algorithm == 'GreedyAgent':
+		if 'seed' in info.keys():
+			seed = info['seed']
+		else:
+			seed = 0
+		agents = [GreedyAgent(world = env.scenario_map,
+								number_of_actions = env.fleet.n_actions,
+								movement_length = env.movement_length,
+        						detection_length = env.detection_length,
+              					seed=seed) for _ in range(n_agents)]
+ 
+	else:
+		raise NotImplementedError('The algorithm {} is not implemented'.format(algorithm))
+
+
+	total_length = 0
+	for run in trange(runs):
+		#Increment the step counter #
+		step = 0
+		# Reset the environment #
+		s = env.reset()
+
+		if render:
+			env.render()
+		# Reset dones #
+		done = {agent_id: False for agent_id in range(env.number_of_agents)}
+		# Update the metrics #
+		total_reward = 0
+		total_reward_information = 0
+		total_reward_exploration = 0
+		total_length = 0
+		total_collisions = 0
+		percentage_visited = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
+		percentage_visited_exp = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
+		average_global_idleness_exp = env.average_global_idleness_exp
+		sum_global_interest = env.sum_global_idleness
+		sum_instantaneous_global_idleness = 0
+		steps_int = 0
+		average_global_idleness_int = sum_instantaneous_global_idleness
+		metrics_list = [algorithm, total_reward_information,
+						total_reward_exploration,
+						total_reward, total_length,
+						total_collisions,
+						average_global_idleness_int,
+						average_global_idleness_exp,
+						sum_global_interest,
+						percentage_visited_exp,
+						percentage_visited]
+		# Initial register #
+		metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
+		for veh_id, veh in enumerate(env.fleet.vehicles):
+			paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
+
+
+		while not all(done.values()):
+
+			total_length += 1
+			other_positions = []
+			acts = []
+			interest_map =  s[np.argmax(env.active_agents)][1]*np.clip(s[np.argmax(env.active_agents)][2],env.minimum_importance,1)
+			
+			# Compute the actions #
+			for i in range(n_agents):
+       
+				if algorithm == 'GreedyAgent':
+					action, new_position = agents[i].move(env.fleet.vehicles[i].position, other_positions, interest_map)
+					interest_map =  np.clip(interest_map - agents[i].compute_detection_mask(new_position),env.minimum_importance,1)
+				else:
+					action, new_position = agents[i].move(env.fleet.vehicles[i].position,other_positions)
+     
+				acts.append(action)
+				if list(new_position) in other_positions:
+					OBS = False
+				other_positions.append(list(new_position))
+			actions = {i: acts[i] for i in range(n_agents)}
+			#actions = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(n_agents)}
+
+			# Process the agent step #
+			s, reward, done, _ = env.step(actions)
+
+			if render:
+				env.render()
+	
+			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
+			nu = anneal_nu(distance / distance_budget, *nu_intervals)
+			rewards = np.asarray(list(reward.values()))
+			percentage_visited = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
+			if nu<0.5:
+				steps_int += 1
+				sum_instantaneous_global_idleness += env.instantaneous_global_idleness
+				average_global_idleness_int = sum_instantaneous_global_idleness/steps_int
+				total_reward_information += np.sum(rewards[:,0])
+			else:
+				average_global_idleness_exp = np.copy(env.average_global_idleness_exp)
+				percentage_visited_exp = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
+				total_reward_exploration += np.sum(rewards[:,1])
+
+			total_collisions += env.fleet.fleet_collisions    
+			total_reward = total_reward_exploration + total_reward_information
+
+
+			sum_global_interest = env.sum_global_idleness
+			metrics_list = [algorithm, total_reward_information,
+							total_reward_exploration,
+							total_reward, total_length,
+							total_collisions,
+							average_global_idleness_int,
+							average_global_idleness_exp,
+							sum_global_interest,
+							percentage_visited_exp,
+							percentage_visited]
+			metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
+			for veh_id, veh in enumerate(env.fleet.vehicles):
+				paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
+
+		# Reset the algorithm #
+		if algorithm == 'LawnMower':
+			for i in range(n_agents):
+				agents[i].reset(initial_directions[i])
+		
+
+
+	if save:
+		if not os.path.exists(path):
+			os.makedirs(path)
+	
+		metrics.register_experiment()
+		paths.register_experiment()
+
+	if render:
+		pass
+		#plt.close()
+
+def run_evaluation_Ver_old(path: str, agent, algorithm: str, reward_type: str, runs: int, n_agents: int, ground_truth_type: str, render = False):
+
+	
+	metrics = {'Algorithm': [], 
+			'Reward type': [],  
+			'Run': [], 
+			'Step': [],
+			'N_agents': [],
+			'Ground Truth': [],
+			'Mean distance': [],
+			'Accumulated Reward': [],
+			'$\Delta \mu$': [], 
+			'$\Delta \sigma$': [], 
+			'Total uncertainty': [],
+			'Error $\mu$': [],
+			'Max. Error in $\mu_{max}$': [], 
+			'Mean Error in $\mu_{max}$': [],
+			'SOP GLOBAL GP':[],
+			'MSE GLOBAL GP':[],
+			'R2 GLOBAL GP':[],}
+	
+	for i in range(n_agents): 
+		metrics['Agent {} X '.format(i)] = []
+		metrics['Agent {} Y'.format(i)] = []
+		metrics['Agent {} reward'.format(i)] = []
+
+	for run in trange(runs):
+
+		#Increment the step counter #
+		step = 0
+		
+		# Reset the environment #
+		state = agent.env.reset()
+
+		if render:
+			agent.env.render()
+
+		# Reset dones #
+		done = {agent_id: False for agent_id in range(agent.env.number_of_agents)}
+
+		# Reset modules
+		for module in agent.nogoback_masking_modules.values():
+			module.reset()
+
+		# Update the metrics #
+		metrics['Algorithm'].append(algorithm)
+		metrics['Reward type'].append(reward_type)
+		metrics['Run'].append(run)
+		metrics['Step'].append(step)
+		metrics['N_agents'].append(n_agents)
+		metrics['Ground Truth'].append(ground_truth_type)
+		metrics['Mean distance'].append(0)
+		metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]].mean())
+		metrics['$\Delta \mu$'].append(0)
+		metrics['$\Delta \sigma$'].append(0)
+		metrics['Error $\mu$'].append(agent.env.get_error())
+		metrics['Max. Error in $\mu_{max}$'].append(1)
+		metrics['Mean Error in $\mu_{max}$'].append(1)
+
+		peaks, vals = find_peaks(agent.env.gt.read())
+		if peaks.shape[0] == 0:
+			peaks, vals = find_peaks(agent.env.gt.read(), threshold=0.3)
+
+		positions = agent.env.fleet.get_positions()
+		for i in range(n_agents): 
+			metrics['Agent {} X '.format(i)].append(positions[i,0])
+			metrics['Agent {} Y'.format(i)].append(positions[i,1])
+			metrics['Agent {} reward'.format(i)].append(0)
+
+		metrics['Accumulated Reward'].append(0)
+		
+		acc_reward = 0
+
+		while not all(done.values()):
+
+			step += 1
+
+			# Select the action using the current policy
+			if not 	agent.masked_actions:
+				actions = agent.select_action(state, deterministic=True)
+			else:
+				actions = agent.select_masked_action(states=state, positions=agent.env.fleet.get_positions(), deterministic=True)
+				
+			actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
+
+			# Process the agent step #
+			next_state, reward, done, _ = agent.env.step(actions)
+
+			if render:
+				agent.env.render()
+
+			acc_reward += sum(reward.values())
+
+			# Update the state #
+			state = next_state
+
+			# Datos de estado
+			metrics['Algorithm'].append(algorithm)
+			metrics['Reward type'].append(reward_type)
+			metrics['Run'].append(run)
+			metrics['Step'].append(step)
+			metrics['N_agents'].append(n_agents)
+			metrics['Ground Truth'].append(ground_truth_type)
+			metrics['Mean distance'].append(agent.env.fleet.get_distances().mean())
+
+			# Datos de cambios en la incertidumbre y el mu
+			changes_mu, changes_sigma = agent.env.gp_coordinator.get_changes()
+			metrics['$\Delta \mu$'].append(changes_mu.sum())
+			metrics['$\Delta \sigma$'].append(changes_sigma.sum())
+			# Incertidumbre total aka entropía
+			metrics['Total uncertainty'].append(agent.env.gp_coordinator.sigma_map[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]].mean())
+			# Error en el mu
+			metrics['Error $\mu$'].append(agent.env.get_error())
+			# Error en el mu max
+			peaks, vals = find_peaks(agent.env.gt.read())
+			if peaks.shape[0] == 0:
+
+				peaks = np.unravel_index(np.argmax(agent.env.gt.read()), agent.env.gt.read().shape) 
+				vals = agent.env.gt.read()[peaks[0], peaks[1]]
+				#peaks, vals = find_peaks(agent.env.gt.read(), threshold=0.8)
+				estimated_vals = agent.env.gp_coordinator.mu_map[peaks[0], peaks[1]]
+			else:
+				estimated_vals = agent.env.gp_coordinator.mu_map[peaks[:,0], peaks[:,1]]
+			error = np.abs(estimated_vals - vals)
+			metrics['Max. Error in $\mu_{max}$'].append(np.max(error))
+			metrics['Mean Error in $\mu_{max}$'].append(np.mean(error.mean()))
+
+			positions = agent.env.fleet.get_positions()
+			for i in range(n_agents): 
+				metrics['Agent {} X '.format(i)].append(positions[i,0])
+				metrics['Agent {} Y'.format(i)].append(positions[i,1])
+				metrics['Agent {} reward'.format(i)].append(0)
+
+			metrics['Accumulated Reward'].append(acc_reward)
+
+		if render:
+			plt.show()
+
+		# Compute the final error using all the points in the map #
+		gp_unique = GaussianProcessRegressor(kernel=C(1.0, (1e-3, 1e3)) * RBF(1.0, (1e-2, 1e3)), n_restarts_optimizer=10)
+		gp_unique.fit(agent.env.gp_coordinator.x, agent.env.gp_coordinator.y)
+		mu_global = gp_unique.predict(agent.env.gp_coordinator.X)
+		real_values = agent.env.gt.read()[agent.env.gp_coordinator.X[:,0], agent.env.gp_coordinator.X[:,1]]
+		sop_GLOBAL_GP = np.abs(mu_global - real_values).sum()
+		mse_GLOBAL_GP = mean_squared_error(mu_global, real_values)
+		r2_GLOBAL_GP = r2_score(mu_global, real_values)
+
+		# Add the final error to the metrics #
+		metrics['SOP GLOBAL GP'].extend([sop_GLOBAL_GP] * (step + 1))
+		metrics['MSE GLOBAL GP'].extend([mse_GLOBAL_GP] * (step + 1))
+		metrics['R2 GLOBAL GP'].extend([r2_GLOBAL_GP] * (step + 1))
+
+
+	df = pd.DataFrame(metrics)
+
+
+
+	df.to_csv(path + '/{}_{}_{}_{}.csv'.format(algorithm, ground_truth_type, reward_type, n_agents))
+

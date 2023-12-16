@@ -12,14 +12,11 @@ import json
 
 background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","dodgerblue"])
 
-np.random.seed(0)
-
 class DiscreteVehicle:
 
 	def __init__(self, initial_position, n_actions, movement_length, navigation_map, detection_length):
 		
 		""" Initial positions of the drones """
-		np.random.seed(0)
 		self.initial_position = initial_position
 		self.position = np.copy(initial_position)
 
@@ -123,7 +120,6 @@ class DiscreteFleet:
 				 navigation_map):
 
 		""" Coordinator of the movements of the fleet. Coordinates the common model, the distance between drones, etc. """
-		np.random.seed(0)
 		self.number_of_vehicles = number_of_vehicles
 		self.initial_positions = fleet_initial_positions
 		self.n_actions = n_actions
@@ -266,6 +262,7 @@ class MultiAgentPatrolling(gym.Env):
 				 fleet_initial_positions=None,
 				 seed=0,
 				 miopic=True,
+				 dynamic=True,
 				 detection_length=2,
 				 movement_length=2,
 				 max_collisions=5,
@@ -281,7 +278,6 @@ class MultiAgentPatrolling(gym.Env):
 		""" The gym environment """
 
 		# Load the scenario map
-		np.random.seed(seed)
 		self.scenario_map = scenario_map
 		self.visitable_locations = np.vstack(np.where(self.scenario_map != 0)).T
 		self.number_of_agents = number_of_vehicles
@@ -289,7 +285,8 @@ class MultiAgentPatrolling(gym.Env):
 		# Initial positions
 		if fleet_initial_positions is None:
 			self.random_inititial_positions = True
-			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), number_of_vehicles, replace=False)
+			self.rng_initial_positions = np.random.default_rng(seed)
+			random_positions_indx = self.rng_initial_positions.choice(np.arange(0, len(self.visitable_locations)), number_of_vehicles, replace=False)
 			self.initial_positions = self.visitable_locations[random_positions_indx]
 		else:
 			self.random_inititial_positions = False
@@ -297,6 +294,8 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.obstacles = obstacles
 		self.miopic = miopic
+		if self.obstacles:
+			self.rng_obstacles = np.random.default_rng(seed)
 		self.reward_type = reward_type
 	
 		# Number of pixels
@@ -321,6 +320,8 @@ class MultiAgentPatrolling(gym.Env):
 								   navigation_map=self.scenario_map)
 
 		self.max_collisions = max_collisions
+		# Ground truth
+		self.dynamic = dynamic
 		self.ground_truth_type = ground_truth_type
 		if ground_truth_type == 'shekel':
 			self.gt = GroundTruth(self.scenario_map, max_number_of_peaks=4, is_bounded=True, seed=self.seed)
@@ -392,7 +393,7 @@ class MultiAgentPatrolling(gym.Env):
 
 		# Get the N random initial positions #
 		if self.random_inititial_positions:
-			random_positions_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents, replace=False)
+			random_positions_indx = self.rng_initial_positions.choice(np.arange(0, len(self.visitable_locations)), self.number_of_agents, replace=False)
 			self.initial_positions = self.visitable_locations[random_positions_indx]
 
 		# Reset the positions of the fleet #
@@ -406,7 +407,7 @@ class MultiAgentPatrolling(gym.Env):
 		if self.obstacles:
 			# Generate a inside obstacles map #
 			self.inside_obstacles_map = np.zeros_like(self.scenario_map)
-			obstacles_pos_indx = np.random.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
+			obstacles_pos_indx = self.rng_obstacles.choice(np.arange(0, len(self.visitable_locations)), size=20, replace=False)
 			self.inside_obstacles_map[self.visitable_locations[obstacles_pos_indx, 0], self.visitable_locations[obstacles_pos_indx, 1]] = 1.0
 
 			# Update the obstacle map for every agent #
@@ -534,8 +535,9 @@ class MultiAgentPatrolling(gym.Env):
 		done = {agent_id: self.fleet.get_distances()[agent_id] > self.distance_budget or self.fleet.fleet_collisions > self.max_collisions for agent_id in range(self.number_of_agents)}
 		self.active_agents = [not d for d in done.values()]
 		
-		# Update ground truth
-		self.gt.step()
+		# Update ground truth if dynamic #
+		if self.dynamic:
+			self.gt.step()
 
 		return self.state if self.frame_stacking is None else self.frame_stacking.process(self.state), reward, done, self.info
 
@@ -577,12 +579,8 @@ class MultiAgentPatrolling(gym.Env):
 		self.sum_global_idleness += self.instantaneous_global_idleness
 		self.sum_global_idleness_exp  += self.instantaneous_global_idleness_exp 
   
-		if self.steps!=0:
-			self.average_global_idleness = self.sum_global_idleness/self.steps
-			self.average_global_idleness_exp = self.sum_global_idleness_exp/self.steps
-		else:
-			self.average_global_idleness = self.sum_global_idleness
-			self.average_global_idleness_exp = self.sum_global_idleness_exp
+		self.average_global_idleness = self.sum_global_idleness/(self.steps + 1)
+		self.average_global_idleness_exp = self.sum_global_idleness_exp/(self.steps + 1)
 
         
 	def render(self, mode='human'):
@@ -806,7 +804,7 @@ if __name__ == '__main__':
 							   forget_factor=0.5,
 							   attrition=0.1,
 							   ground_truth_type='algae_bloom',
-							   obstacles=False,
+							   obstacles=True,
 							   frame_stacking=2,
 							   state_index_stacking=(2,3,4),
 				 			   reward_type='Double reward v2 v4',

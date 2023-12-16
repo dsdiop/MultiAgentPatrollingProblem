@@ -38,6 +38,7 @@ class MultiAgentDuelingDQNAgent:
 			alpha: float = 0.2,
 			beta: float = 0.6,
 			prior_eps: float = 1e-6,
+			n_steps: int = 1,
 			# NN parameters
 			number_of_features: int = 1024,
 			noisy: bool = False,
@@ -117,7 +118,7 @@ class MultiAgentDuelingDQNAgent:
 		self.weighted = weighted
 		self.masked_actions = masked_actions
 		self.consensus = consensus
-        
+		self.n_steps = n_steps
 		self.use_nu = use_nu
 		if self.use_nu:
 			self.nu_intervals = nu_intervals
@@ -131,11 +132,12 @@ class MultiAgentDuelingDQNAgent:
 
 		""" Prioritized Experience Replay """
 		self.beta = beta
+		self.beta_init = beta
 		self.prior_eps = prior_eps
 		if self.use_nu:
-			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, batch_size, alpha=alpha)
+			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
 		else:
-			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, batch_size, alpha=alpha)
+			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
 
 		""" Create the DQN and the DQN-Target (noisy if selected) """
 		if self.noisy:
@@ -328,7 +330,10 @@ class MultiAgentDuelingDQNAgent:
 				loss.backward()
 			self.writer.add_scalar('pruebas/loss_inf', torch.mean(elementwise_loss[0] * weights).detach().cpu(), self.episode)
 			self.writer.add_scalar('pruebas/loss_exp', torch.mean(elementwise_loss[1] * weights).detach().cpu(), self.episode)
-			elementwise_loss = elementwise_loss[0] + elementwise_loss[1]
+			if self.weighting_method is not None:
+				elementwise_loss = extra_outputs['weights'][0]*elementwise_loss[0] + extra_outputs['weights'][1]*elementwise_loss[1]
+			else:
+				elementwise_loss = elementwise_loss[0] + elementwise_loss[1]
 		else:
 			elementwise_loss = self._compute_dqn_loss(samples)
 			loss = torch.mean(elementwise_loss * weights)
@@ -458,7 +463,7 @@ class MultiAgentDuelingDQNAgent:
 				self.dqn_target.reset_noise()
 
 			# PER: Increase beta temperature
-			self.beta = self.anneal_beta(p=episode / episodes, p_init=0, p_fin=0.9, b_init=0.4, b_end=1.0)
+			self.beta = self.anneal_beta(p=episode / episodes, p_init=0, p_fin=0.9, b_init=self.beta_init, b_end=1.0)
 
 			# Epsilon greedy annealing
 			self.epsilon = self.anneal_epsilon(p=episode / episodes,
@@ -509,7 +514,6 @@ class MultiAgentDuelingDQNAgent:
 										{'nu': self.nu}]
 
 					self.memory.store(*self.transition)
-
 				# Update the state
 				state = next_state
 				# Accumulate indicators
@@ -623,7 +627,7 @@ class MultiAgentDuelingDQNAgent:
 
 				with torch.no_grad():
 					next_q_value = self.dqn_target(next_state).gather(1, next_max_action_value)
-					target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
+					target = (reward + self.gamma**self.n_steps * next_q_value * done_mask).to(self.device)
 
 				# calculate element-wise dqn loss
 				#
@@ -657,7 +661,7 @@ class MultiAgentDuelingDQNAgent:
 
 			with torch.no_grad():
 				next_q_value = self.dqn_target(next_state).max(dim=1, keepdim=True)[0]
-				target = (reward + self.gamma * next_q_value * done_mask).to(self.device)
+				target = (reward + self.gamma**self.n_steps * next_q_value * done_mask).to(self.device)
 
 			# calculate element-wise dqn loss
 			elementwise_loss = F.mse_loss(curr_q_value, target, reduction="none")
@@ -675,7 +679,7 @@ class MultiAgentDuelingDQNAgent:
 				next_dist = next_dist[range(self.batch_size), next_action]
 
 				# Compute the target distribution by adding the
-				t_z = reward + (1 - done) * self.gamma * self.support
+				t_z = reward + (1 - done) * self.gamma**self.n_steps * self.support
 				t_z = t_z.clamp(min=self.v_interval[0], max=self.v_interval[1])
 				b = (t_z - self.v_interval[0]) / delta_z
 				lower_bound = b.floor().long()
