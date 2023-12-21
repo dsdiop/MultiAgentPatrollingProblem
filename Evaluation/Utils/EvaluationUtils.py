@@ -47,6 +47,107 @@ def find_peaks(data:np.ndarray, neighborhood_size: int = 5, threshold: float = 0
 
 	
 
+def prewarm_buffer(path: str, env, runs: int, n_agents: int, ground_truth_type: str, 
+			nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],
+			memory = None,
+      		info = {}):
+	
+	distance_budget = env.distance_budget
+	algorithms = ['LawnMower','RandomWandering', 'GreedyAgent']
+	for algorithm in algorithms:
+		if algorithm == 'RandomWandering':
+			if 'seed' in info.keys():
+				seed = info['seed']
+			else:
+				seed = 0
+			agents = [WanderingAgent(world = env.scenario_map,
+									number_of_actions = env.fleet.n_actions,
+									movement_length = env.movement_length, seed=seed+i) for i in range(n_agents)]
+		elif algorithm == 'LawnMower':	
+			if 'seed' in info.keys():
+				seed = info['seed']
+			else:
+				seed = 0
+			if 'initial_directions' in info.keys():
+				initial_directions = info['initial_directions']
+			else:
+				initial_directions = [None for _ in range(n_agents)]
+			agents = [LawnMowerAgent(world = env.scenario_map,
+									number_of_actions = env.fleet.n_actions,
+									movement_length = env.movement_length,
+									forward_direction = initial_directions[i],
+									seed=seed) for i in range(n_agents)]
+		elif algorithm == 'GreedyAgent':
+			if 'seed' in info.keys():
+				seed = info['seed']
+			else:
+				seed = 0
+			agents = [GreedyAgent(world = env.scenario_map,
+									number_of_actions = env.fleet.n_actions,
+									movement_length = env.movement_length,
+									detection_length = env.detection_length,
+									seed=seed) for _ in range(n_agents)]
+	
+		else:
+			raise NotImplementedError('The algorithm {} is not implemented'.format(algorithm))
+
+
+		total_length = 0
+		for run in trange(runs):
+			#Increment the step counter #
+			step = 0
+			# Reset the environment #
+			state = env.reset()
+			# Reset dones #
+			done = {agent_id: False for agent_id in range(env.number_of_agents)}
+
+			while not all(done.values()):
+
+				total_length += 1
+				other_positions = []
+				acts = []
+				idleness_matrix =  env.idleness_matrix
+				interest_map = env.importance_matrix
+				distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
+				nu = anneal_nu(p= distance / distance_budget)
+				# Compute the actions #
+				for i in range(n_agents):
+					if algorithm == 'GreedyAgent':
+						action_exp, action_inf = agents[i].move(env.fleet.vehicles[i].position, other_positions, idleness_matrix, interest_map)
+						if nu > np.random.rand():
+							action_mat = action_exp
+						else:
+							action_mat = action_inf
+
+						idleness_matrix =  action_mat[2]
+						new_position = action_mat[1]
+						action = action_mat[0]
+					else:
+						action, new_position = agents[i].move(env.fleet.vehicles[i].position,other_positions)
+
+					acts.append(action)
+					if list(new_position) in other_positions:
+						OBS = False
+					other_positions.append(list(new_position))
+				actions = {i: acts[i] for i in range(n_agents) if not done[i]}
+				#actions = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(n_agents)}
+
+				# Process the agent step #
+				next_state, reward, done, _ = env.step(actions)
+				for agent_id in actions.keys():
+					"""agent_id = np.random.randint(0, self.env.number_of_agents) ##########################################
+					while agent_id not in actions.keys():
+						agent_id = np.random.randint(0, self.env.number_of_agents)"""
+					# Store every observation for every agent
+					transition = [state[agent_id],
+										actions[agent_id],
+										reward[agent_id],
+										next_state[agent_id],
+										done[agent_id],
+										{'nu': nu}]
+
+					memory.store(*transition)
+	return memory
 
 def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, 
 			nu_intervals=[[0., 1], [0.30, 1], [0.60, 0.], [1., 0.]],

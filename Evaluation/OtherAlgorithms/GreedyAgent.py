@@ -18,20 +18,54 @@ class GreedyAgent:
 		self.seed = seed
 		self.rng = np.random.default_rng(seed=self.seed)
 	
-	def move(self, actual_position, other_positions, interest_map):
+	def move(self, actual_position, other_positions, idleness_matrix, interest_map):
 
 		# Compute if there is an obstacle or reached the border #
 		new_possible_positions = [actual_position + self.action_to_vector(i) for i in range(self.number_of_actions)]
 		OBS = self.check_possible_collisions(new_possible_positions, other_positions)
 		if OBS.all():
-			return 0, actual_position
-		interest_recollected = [-np.inf if OBS[i] else self.interest_recollected(new_possible_positions[i], interest_map) for i in range(len(OBS))]
-		action = self.rng.choice(np.where(np.array(interest_recollected) == np.max(interest_recollected))[0]) # If there are more than one action with the same interest, choose randomly
-		return action , actual_position + self.action_to_vector(action)
+			return 0, actual_position, idleness_matrix
+
+		rewards_exploration = []
+		rewards_information = []
+		new_idleness_matrices = []
+
+		for i in range(len(OBS)):
+			if OBS[i]:
+				rewards_exploration.append(-np.inf)
+				rewards_information.append(-np.inf)
+				new_idleness_matrices.append(idleness_matrix)
+			else:
+				reward, new_idleness_matrix = self.reward_function(new_possible_positions[i], idleness_matrix, interest_map)
+				rewards_exploration.append(reward[1])
+				rewards_information.append(reward[0])
+				new_idleness_matrices.append(new_idleness_matrix)
+
+		max_exploration_index = np.argmax(rewards_exploration)
+		max_information_index = np.argmax(rewards_information)
+
+		action_exploration = self.rng.choice(np.where(np.array(rewards_exploration) == rewards_exploration[max_exploration_index])[0])
+		action_information = self.rng.choice(np.where(np.array(rewards_information) == rewards_information[max_information_index])[0])
+		#print(f'exploration: {rewards_exploration[action_exploration]}')
+		#print(f'information: {rewards_information[action_information]}')
+		return [action_exploration, new_possible_positions[action_exploration], new_idleness_matrices[action_exploration]], [action_information, new_possible_positions[action_information], new_idleness_matrices[action_information]]
+
+	def reward_function(self, position, idleness_matrix, interest_map):
+		""" Compute the reward function given the position, the idleness matrix and the interest map. """
+		detection_mask = self.compute_detection_mask(position)
+		rewards_information = np.sum((interest_map[detection_mask.astype(bool)] * idleness_matrix[detection_mask.astype(bool)])/
+                               (1*self.detection_length)) 
+		
+		rewards_exploration = np.sum((idleness_matrix[detection_mask.astype(bool)])/
+                               (1*self.detection_length)) 
+
+		new_idleness_matrix = np.clip(idleness_matrix - detection_mask,0,1)
+  
+		return np.asarray([rewards_information, rewards_exploration]), new_idleness_matrix
 	
 	def interest_recollected(self, agent_position, interest_map):
 		""" Given the agent position and the interest map, compute the interest recollected. """
-
+		interest_map = np.ones_like(interest_map)
 		masked_interest_map = interest_map * self.compute_detection_mask(agent_position) * self.world
 		interest_recollected = np.sum(masked_interest_map)
 		return interest_recollected
@@ -49,7 +83,7 @@ class GreedyAgent:
 
 		known_mask = np.zeros_like(self.world)
 		known_mask[mask.T] = 1.0
-		return known_mask
+		return known_mask*self.world
 
 	def action_to_vector(self, action):
 		""" Transform an action to a vector """
@@ -146,23 +180,31 @@ def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, gro
 			total_length += 1
 			other_positions = []
 			acts = []
-			interest_map =  s[np.argmax(env.active_agents)][1]*np.clip(s[np.argmax(env.active_agents)][2],env.minimum_importance,1)
+			idleness_matrix =  s[np.argmax(env.active_agents)][1]
+			interest_map = env.importance_matrix
+			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
+			nu = anneal_nu(p= distance / distance_budget)
+			print(f'nu: {nu}')
 			# Compute the actions #
 			for i in range(n_agents):
-				action, new_position = greedy_agents[i].move(env.fleet.vehicles[i].position, other_positions, interest_map)
-				acts.append(action)
-				if list(new_position) in other_positions:
+				action_exp, action_inf = greedy_agents[i].move(env.fleet.vehicles[i].position, other_positions, idleness_matrix, interest_map)
+				if nu > np.random.rand():
+					action = action_exp
+				else:
+					action = action_inf
+
+
+				acts.append(action[0])
+				if list(action[1]) in other_positions:
 					OBS = False
-				other_positions.append(list(new_position))
-				interest_map =  np.clip(interest_map - greedy_agents[i].compute_detection_mask(new_position),env.minimum_importance,1)
+				other_positions.append(list(action[1]))
+				idleness_matrix =  action[2]
 			actions = {i: acts[i] for i in range(n_agents)}
 			# Process the agent step #
 			s, reward, done, _ = env.step(actions)
 
 			if render:
 				env.render()
-			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
-			nu = anneal_nu(p= distance / distance_budget)
 			rewards = np.asarray(list(reward.values()))
 			percentage_visited = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
 			if nu<0.5:

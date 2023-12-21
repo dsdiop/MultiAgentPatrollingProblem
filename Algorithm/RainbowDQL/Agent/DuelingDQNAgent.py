@@ -18,7 +18,7 @@ import json
 import os
 from collections import deque
 from Algorithm.RainbowDQL.Agent.methods.weight_methods import WeightMethods
-
+from Evaluation.Utils.EvaluationUtils import prewarm_buffer
 class MultiAgentDuelingDQNAgent:
 
 	def __init__(
@@ -39,6 +39,7 @@ class MultiAgentDuelingDQNAgent:
 			beta: float = 0.6,
 			prior_eps: float = 1e-6,
 			n_steps: int = 1,
+			prewarmed_memory: None = None,
 			# NN parameters
 			number_of_features: int = 1024,
 			noisy: bool = False,
@@ -134,11 +135,25 @@ class MultiAgentDuelingDQNAgent:
 		self.beta = beta
 		self.beta_init = beta
 		self.prior_eps = prior_eps
+		self.save_state_in_uint8 = self.env.convert_to_uint8
 		if self.use_nu:
-			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
+			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, save_state_in_uint8=self.save_state_in_uint8,
+                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
 		else:
-			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
-
+			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, save_state_in_uint8=self.save_state_in_uint8,
+                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
+		if prewarmed_memory is not None:
+			import pickle
+			if os.path.exists(prewarmed_memory):
+				with open(prewarmed_memory, 'rb') as f:	
+					prewarmed_buffer = pickle.load(f)
+			else:
+				prewarmed_buffer = prewarm_buffer("", self.env, 2, self.env.number_of_agents, 
+									self.env.ground_truth_type, nu_intervals=self.nu_intervals, memory=self.memory)
+				os.makedirs(os.path.dirname(prewarmed_memory), exist_ok=True)
+				with open(prewarmed_memory, 'wb') as f:
+					pickle.dump(prewarmed_buffer, f)
+			self.memory=prewarmed_buffer
 		""" Create the DQN and the DQN-Target (noisy if selected) """
 		if self.noisy:
 			self.dqn = NoisyDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
@@ -226,7 +241,7 @@ class MultiAgentDuelingDQNAgent:
 		""" Select an action masked to avoid collisions and so """
 
 		# Update the state of the safety module #
-		self.safe_masking_module.update_state(position = position, new_navigation_map = state[0])
+		self.safe_masking_module.update_state(position = position, new_navigation_map = self.env.scenario_map)
 
 		if self.epsilon > np.random.rand() and not self.noisy:
 
@@ -251,7 +266,7 @@ class MultiAgentDuelingDQNAgent:
 		""" Select an action masked to avoid collisions and so """
 
 		# Update the state of the safety module #
-		self.safe_masking_module.update_state(position = position, new_navigation_map = state[0])
+		self.safe_masking_module.update_state(position = position, new_navigation_map = self.env.scenario_map)
 
 		if self.epsilon > np.random.rand() and not self.noisy:
 
@@ -472,8 +487,9 @@ class MultiAgentDuelingDQNAgent:
 			                                   e_init=self.epsilon_values[0],
 			                                   e_fin=self.epsilon_values[1])
 			# Run an episode #
-			while not all(done.values()):
+			print('Episode: ', episode, 'Memory used: ', self.memory.ptr)
 
+			while not all(done.values()):
 				if self.use_nu:
 					distance = np.min([np.max(self.env.fleet.get_distances()), max_movements])
 					self.nu = self.anneal_nu(p= distance / max_movements,
@@ -483,12 +499,19 @@ class MultiAgentDuelingDQNAgent:
 											 p4=self.nu_intervals[3])
 				# Increase the played steps #
 				steps += 1
+    
 				# Select the action using the current policy
-				
-				if not self.masked_actions:
-					actions = self.select_action(state)
+				state_float32 = {i:None for i in state.keys()}
+				if self.save_state_in_uint8:
+					for agent_id in state.keys():
+						state_float32[agent_id] = (state[agent_id] / 255.0).astype(np.float32)
 				else:
-					actions = self.select_masked_action(states=state, positions=self.env.fleet.get_positions())
+					state_float32 = state
+     
+				if not self.masked_actions:
+					actions = self.select_action(state_float32)
+				else:
+					actions = self.select_masked_action(states=state_float32, positions=self.env.fleet.get_positions())
 
 
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}
@@ -594,8 +617,14 @@ class MultiAgentDuelingDQNAgent:
 
 		"""Return dqn loss."""
 		device = self.device  # for shortening the following lines
-		state = torch.FloatTensor(samples["obs"]).to(device)
-		next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+		if self.save_state_in_uint8:
+			samples_obs = (samples["obs"] / 255.0).astype(np.float32)
+			samples_next_obs = (samples["next_obs"] / 255.0).astype(np.float32)
+			state = torch.FloatTensor(samples_obs).to(device)
+			next_state = torch.FloatTensor(samples_next_obs).to(device)
+		else:
+			state = torch.FloatTensor(samples["obs"]).to(device)
+			next_state = torch.FloatTensor(samples["next_obs"]).to(device)
 		#action = torch.LongTensor(samples["acts"]).to(device)
 		#reward = torch.FloatTensor(samples["rews"]).to(device)
 		done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
@@ -776,11 +805,16 @@ class MultiAgentDuelingDQNAgent:
 											 p3=self.nu_intervals[2],
 											 p4=self.nu_intervals[3])
 				# Select the action using the current policy
-				
-				if not self.masked_actions:
-					actions = self.select_action(state)
+				state_float32 = {i:None for i in state.keys()}
+				if self.save_state_in_uint8:
+					for agent_id in state.keys():
+						state_float32[agent_id] = (state[agent_id] / 255.0).astype(np.float32)
 				else:
-					actions = self.select_masked_action(states=state, positions=self.env.fleet.get_positions())
+					state_float32 = state
+				if not self.masked_actions:
+					actions = self.select_action(state_float32)
+				else:
+					actions = self.select_masked_action(states=state_float32, positions=self.env.fleet.get_positions())
 
 
 				actions = {agent_id: action for agent_id, action in actions.items() if not done[agent_id]}

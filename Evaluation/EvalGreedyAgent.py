@@ -27,6 +27,7 @@ initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
 
 N_EPISODES = 200
 reward_type = 'metrics global'
+reward_type = 'Double reward v5'
 ground_truth_type = 'algae_bloom'
 seed = 30
 env = MultiAgentPatrolling(scenario_map=sc_map,
@@ -39,8 +40,9 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                         movement_length=2,
                         max_collisions=15,
                         forget_factor=0.5,
-                        attrition=0.1,
-                        reward_type='metrics global',
+                        attrition=0.0,
+				        minimum_importance=0.1,
+                        reward_type=reward_type,
                         ground_truth_type=ground_truth_type,
                         obstacles=False,
                         frame_stacking=1,
