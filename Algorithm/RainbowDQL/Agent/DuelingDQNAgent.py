@@ -9,7 +9,8 @@ import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from Algorithm.RainbowDQL.ReplayBuffers.ReplayBuffers import PrioritizedReplayBuffer, ReplayBuffer,  PrioritizedReplayBufferNrewards
-from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork, DQFDuelingVisualNetwork
+from Algorithm.RainbowDQL.Networks.network import DuelingVisualNetwork, NoisyDuelingVisualNetwork, DistributionalVisualNetwork
+from Algorithm.RainbowDQL.Networks.network import DQFDuelingVisualNetwork, ConcatenatedDuelingVisualNetwork
 from Algorithm.RainbowDQL.ActionMasking.ActionMaskingUtils import SafeActionMasking, ConsensusSafeActionMasking
 import torch.nn.functional as F
 from tqdm import trange
@@ -58,6 +59,7 @@ class MultiAgentDuelingDQNAgent:
 			# Choose Q-function
 			use_nu: bool = False,
 			nu_intervals=[[0., 1], [0.5, 1.], [0.5, 0.], [1., 0.]],
+			concatenatedDQN = False,
 			# Evaluation
 			eval_every=None,
 			eval_episodes=1000,
@@ -124,7 +126,7 @@ class MultiAgentDuelingDQNAgent:
 		if self.use_nu:
 			self.nu_intervals = nu_intervals
 			self.nu = self.nu_intervals[0][1]
-
+		self.concatenatedDQN = concatenatedDQN
 		""" Automatic selection of the device """
 		self.device = torch.device(device if torch.cuda.is_available() else "cpu")
 		#self.device = torch.device("cpu")
@@ -138,17 +140,19 @@ class MultiAgentDuelingDQNAgent:
 		self.save_state_in_uint8 = self.env.convert_to_uint8
 		if self.use_nu:
 			self.memory = PrioritizedReplayBufferNrewards(obs_dim, memory_size, save_state_in_uint8=self.save_state_in_uint8,
-                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
+                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma,
+                                                   n_agents=self.env.number_of_agents)
 		else:
 			self.memory = PrioritizedReplayBuffer(obs_dim, memory_size, save_state_in_uint8=self.save_state_in_uint8,
-                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma)
+                                                 		batch_size=batch_size, alpha=alpha, n_step=n_steps, gamma=gamma,
+                                                   n_agents=self.env.number_of_agents)
 		if prewarmed_memory is not None:
 			import pickle
 			if os.path.exists(prewarmed_memory):
 				with open(prewarmed_memory, 'rb') as f:	
 					prewarmed_buffer = pickle.load(f)
 			else:
-				prewarmed_buffer = prewarm_buffer("", self.env, 2, self.env.number_of_agents, 
+				prewarmed_buffer = prewarm_buffer("", self.env, 500, self.env.number_of_agents, 
 									self.env.ground_truth_type, nu_intervals=self.nu_intervals, memory=self.memory)
 				os.makedirs(os.path.dirname(prewarmed_memory), exist_ok=True)
 				with open(prewarmed_memory, 'wb') as f:
@@ -163,8 +167,12 @@ class MultiAgentDuelingDQNAgent:
 			self.dqn = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 			self.dqn_target = DistributionalVisualNetwork(obs_dim, action_dim, number_of_features, num_atoms, self.support).to(self.device)
 		elif self.use_nu:
-			self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
-			self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
+			if not self.concatenatedDQN:
+				self.dqn = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
+				self.dqn_target = DQFDuelingVisualNetwork(obs_dim, action_dim, number_of_features,archtype,nettype).to(self.device)
+			else:
+				self.dqn = ConcatenatedDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+				self.dqn_target = ConcatenatedDuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 			self.loss_expl = deque(maxlen=3)
 			self.loss_inf = deque(maxlen=3)
 			self.weighting_method_name = weighting_method
@@ -172,8 +180,8 @@ class MultiAgentDuelingDQNAgent:
 			if weighting_method is not None:
 				self.weighting_method = WeightMethods(weighting_method, n_tasks=2, device=self.device, **weight_methods_parameters)
 		else:
-			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
-			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features,nettype).to(self.device)
+			self.dqn = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
+			self.dqn_target = DuelingVisualNetwork(obs_dim, action_dim, number_of_features).to(self.device)
 
 		self.dqn_target.load_state_dict(self.dqn.state_dict())
 		self.dqn_target.eval()
@@ -529,7 +537,8 @@ class MultiAgentDuelingDQNAgent:
 					while agent_id not in actions.keys():
 						agent_id = np.random.randint(0, self.env.number_of_agents)"""
 					# Store every observation for every agent
-					self.transition = [state[agent_id],
+					self.transition = [ agent_id,
+                        				state[agent_id],
 										actions[agent_id],
 										reward[agent_id],
 										next_state[agent_id],
@@ -858,6 +867,7 @@ class MultiAgentDuelingDQNAgent:
 			"use_nu": self.use_nu,
 			"nu": self.nu,
 			"nu_intervals": self.nu_intervals,
+			"concatenatedDQN": self.concatenatedDQN,
             "nettype": self.nettype,
             "archtype": self.archtype,
             "masked_actions": self.masked_actions,

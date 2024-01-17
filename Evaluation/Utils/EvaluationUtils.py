@@ -139,12 +139,14 @@ def prewarm_buffer(path: str, env, runs: int, n_agents: int, ground_truth_type: 
 					while agent_id not in actions.keys():
 						agent_id = np.random.randint(0, self.env.number_of_agents)"""
 					# Store every observation for every agent
-					transition = [state[agent_id],
-										actions[agent_id],
-										reward[agent_id],
-										next_state[agent_id],
-										done[agent_id],
-										{'nu': nu}]
+					#print(agent_id)
+					transition = [  agent_id,
+									state[agent_id],
+									actions[agent_id],
+									reward[agent_id],
+									next_state[agent_id],
+									done[agent_id],
+									{'nu': nu}]
 
 					memory.store(*transition)
 	return memory
@@ -154,17 +156,19 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
    			render = False,
       		save = True,	
       		info = {}):
+    
+    
 	metrics = MetricsDataCreator(metrics_names=['Policy Name',
-											'Mean Weighted Idleness Intensification',
-											'Mean Weighted Idleness Exploration',
-											'Mean Weighted Idleness',
-											'Total Length',
-											'Total Collisions',
-											'Average Global Idleness Intensification',
-											'Average Global Idleness Exploration',
-											'Sum global idleness Intensification',
-											'Percentage Visited Exploration',
-											'Percentage Visited'],
+                                                'Accumulated Reward Intensification',
+                                                'Accumulated Reward Exploration',
+                                                'Total Accumulated Reward',
+                                                'Total Length',
+                                                'nu',
+                                                'Instantaneous Global Idleness Intensification',
+                                                'Instantaneous Global Idleness Exploration',
+                                                'Average Global Idleness Intensification',
+                                                'Average Global Idleness Exploration',
+                                                'Percentage Visited'],
 							algorithm_name=algorithm,
 							experiment_name=f'{algorithm}_Results',
 							directory=path)
@@ -224,7 +228,7 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 		#Increment the step counter #
 		step = 0
 		# Reset the environment #
-		s = env.reset()
+		st = env.reset()
 
 		if render:
 			env.render()
@@ -235,23 +239,23 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 		total_reward_information = 0
 		total_reward_exploration = 0
 		total_length = 0
-		total_collisions = 0
+		instantaneous_global_idleness = 0
 		percentage_visited = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
-		percentage_visited_exp = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
+		average_global_idleness_int = env.average_global_idleness
 		average_global_idleness_exp = env.average_global_idleness_exp
-		sum_global_interest = env.sum_global_idleness
-		sum_instantaneous_global_idleness = 0
-		steps_int = 0
-		average_global_idleness_int = sum_instantaneous_global_idleness
+		instantaneous_global_idleness = env.instantaneous_global_idleness
+		instantaneous_global_idleness_exp = env.instantaneous_global_idleness_exp
+		distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
+		nu = anneal_nu(p= distance / distance_budget)
+  
 		metrics_list = [algorithm, total_reward_information,
-						total_reward_exploration,
-						total_reward, total_length,
-						total_collisions,
-						average_global_idleness_int,
-						average_global_idleness_exp,
-						sum_global_interest,
-						percentage_visited_exp,
-						percentage_visited]
+                        total_reward_exploration,
+                        total_reward, total_length, nu,
+                        instantaneous_global_idleness,
+                        instantaneous_global_idleness_exp,
+                        average_global_idleness_int,
+                        average_global_idleness_exp,
+                        percentage_visited]
 		# Initial register #
 		metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
 		for veh_id, veh in enumerate(env.fleet.vehicles):
@@ -263,14 +267,30 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 			total_length += 1
 			other_positions = []
 			acts = []
-			interest_map =  s[np.argmax(env.active_agents)][1]*np.clip(s[np.argmax(env.active_agents)][2],env.minimum_importance,1)
-			
+   
+			s = {i:None for i in st.keys()}
+			if env.convert_to_uint8:
+				for agent_id in st.keys():
+					s[agent_id] = (st[agent_id] / 255.0).astype(np.float32)
+			else:
+				s = st
+    
+			idleness_matrix =  s[np.argmax(env.active_agents)][0]
+			interest_map = env.importance_matrix
+			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
+			nu = anneal_nu(p= distance / distance_budget)
 			# Compute the actions #
 			for i in range(n_agents):
        
 				if algorithm == 'GreedyAgent':
-					action, new_position = agents[i].move(env.fleet.vehicles[i].position, other_positions, interest_map)
-					interest_map =  np.clip(interest_map - agents[i].compute_detection_mask(new_position),env.minimum_importance,1)
+					action_exp, action_inf= agents[i].move(env.fleet.vehicles[i].position, other_positions, idleness_matrix, interest_map)
+					if nu > np.random.rand():
+						list_exp = action_exp
+					else:
+						list_exp = action_inf
+					idleness_matrix =  list_exp[2]
+					new_position = list(list_exp[1])
+					action = list_exp[0]
 				else:
 					action, new_position = agents[i].move(env.fleet.vehicles[i].position,other_positions)
      
@@ -282,8 +302,8 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 			#actions = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(n_agents)}
 
 			# Process the agent step #
-			s, reward, done, _ = env.step(actions)
-
+			st, reward, done, _ = env.step(actions)
+                
 			if render:
 				env.render()
 	
@@ -291,29 +311,22 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 			nu = anneal_nu(distance / distance_budget, *nu_intervals)
 			rewards = np.asarray(list(reward.values()))
 			percentage_visited = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
-			if nu<0.5:
-				steps_int += 1
-				sum_instantaneous_global_idleness += env.instantaneous_global_idleness
-				average_global_idleness_int = sum_instantaneous_global_idleness/steps_int
-				total_reward_information += np.sum(rewards[:,0])
-			else:
-				average_global_idleness_exp = np.copy(env.average_global_idleness_exp)
-				percentage_visited_exp = np.count_nonzero(env.fleet.historic_visited_mask) / np.count_nonzero(env.scenario_map)
-				total_reward_exploration += np.sum(rewards[:,1])
-
-			total_collisions += env.fleet.fleet_collisions    
+			total_reward_information += np.sum(rewards[:,0])
+			total_reward_exploration += np.sum(rewards[:,1]) 
 			total_reward = total_reward_exploration + total_reward_information
 
+			average_global_idleness_int = env.average_global_idleness
+			average_global_idleness_exp = env.average_global_idleness_exp
+			instantaneous_global_idleness = env.instantaneous_global_idleness
+			instantaneous_global_idleness_exp = env.instantaneous_global_idleness_exp
 
-			sum_global_interest = env.sum_global_idleness
 			metrics_list = [algorithm, total_reward_information,
 							total_reward_exploration,
-							total_reward, total_length,
-							total_collisions,
+							total_reward, total_length, nu,
+							instantaneous_global_idleness,
+							instantaneous_global_idleness_exp,
 							average_global_idleness_int,
 							average_global_idleness_exp,
-							sum_global_interest,
-							percentage_visited_exp,
 							percentage_visited]
 			metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
 			for veh_id, veh in enumerate(env.fleet.vehicles):

@@ -317,3 +317,25 @@ class DQFDuelingVisualNetwork(nn.Module):
 	def task_specific_parameters(self):
 		return [i for j,i in self.named_parameters() if 'feature_layer' not in j]
 
+class ConcatenatedDuelingVisualNetwork(nn.Module):
+    def __init__(
+			self,
+			in_dim: tuple,
+			out_dim: int,
+			number_of_features: int,
+	):
+        super(ConcatenatedDuelingVisualNetwork, self).__init__()
+
+        # Define two DuelingVisualNetworks
+        self.dqn1 = DuelingVisualNetwork(in_dim, out_dim, number_of_features)
+        self.dqn2 = DuelingVisualNetwork(in_dim, out_dim, number_of_features)
+
+    def forward(self, x):
+        # Forward pass for each DQN
+        q_values1 = self.dqn1(x)
+        q_values2 = self.dqn2(x)
+
+        # Concatenate the Q-values
+        concatenated_q_values = torch.cat((q_values1, q_values2), dim=1)
+
+        return concatenated_q_values

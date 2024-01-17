@@ -557,12 +557,12 @@ class MultiAgentPatrolling(gym.Env):
 		instantaneous_node_idleness = np.copy(self.scenario_map)
 		instantaneous_node_idleness_exp = np.copy(self.scenario_map)
   
-		inds = np.where(self.fleet.historic_visited_mask)
+		inds = np.where(self.scenario_map)
 		instantaneous_node_idleness_exp[inds] = self.idleness_matrix[inds]
 		instantaneous_node_idleness[inds] = self.idleness_matrix[inds]*self.known_information[inds]
   
-		self.instantaneous_node_idleness = np.clip(instantaneous_node_idleness,0,1) # Instantaneous node idleness
-		self.instantaneous_node_idleness_exp = np.clip(instantaneous_node_idleness_exp,0,1) # Instantaneous node idleness
+		self.instantaneous_node_idleness = instantaneous_node_idleness # Instantaneous node idleness
+		self.instantaneous_node_idleness_exp = instantaneous_node_idleness_exp # Instantaneous node idleness
   
 		self.node_visit = self.node_visit + self.fleet.redundancy_mask
 
@@ -686,8 +686,7 @@ class MultiAgentPatrolling(gym.Env):
 		rewards_information_global = np.sum(self.importance_matrix[self.fleet.collective_mask] * self.idleness_matrix[
 		self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
 		self.fleet.collective_mask]))
-		rewards_exploration_global = 0.2*np.sum((1+self.fleet.new_visited_mask[self.fleet.collective_mask].astype(np.float32))*self.idleness_matrix[
-				self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
+		rewards_exploration_global = np.sum(self.idleness_matrix[self.fleet.collective_mask] / (1 * self.detection_length * self.fleet.redundancy_mask[
 					self.fleet.collective_mask])) 
 
 		self.info = {} 

@@ -12,7 +12,7 @@ import random
 class ReplayBuffer:
 	"""A simple numpy replay buffer."""
 
-	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True,  batch_size: int = 32, n_step: int = 1, gamma: float = 0.99):
+	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True,  batch_size: int = 32, n_step: int = 1, gamma: float = 0.99, n_agents: int = 1):
 		if save_state_in_uint8:
 			self.obs_buf = np.zeros([size] + list(obs_dim), dtype=np.uint8)
 			self.next_obs_buf = np.zeros([size] + list(obs_dim), dtype=np.uint8)
@@ -27,23 +27,27 @@ class ReplayBuffer:
 		self.ptr, self.size, = 0, 0
 
 		# for N-step Learning
-		self.n_step_buffer = deque(maxlen=n_step)
+		self.n_agents = n_agents
+		self.n_step_buffers = [deque(maxlen=n_step) for _ in range(n_agents)]
 		self.n_step = n_step
 		self.gamma = gamma
 
-	def store(self, obs: np.ndarray, act: np.ndarray, rew: float, next_obs: np.ndarray, done: bool, info: dict) -> Tuple[
-		np.ndarray, np.ndarray, float, np.ndarray, bool, dict]:
+	def store(self, agent_id: int, obs: np.ndarray, act: np.ndarray, rew: float, next_obs: np.ndarray, done: bool, info: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool, dict]:
+
+		# Check if the agent ID is valid
+		assert 0 <= agent_id < self.n_agents, "Invalid agent ID"
 
 		transition = (obs, act, rew, next_obs, done, info)
-		self.n_step_buffer.append(transition)
+		
+		self.n_step_buffers[agent_id].append(transition)
 
 		# single step transition is not ready
-		if len(self.n_step_buffer) < self.n_step:
+		if len(self.n_step_buffers[agent_id]) < self.n_step:
 			return ()
 
 		# make a n-step transition
-		rew, next_obs, done, info = self._get_n_step_info(self.n_step_buffer, self.gamma)
-		obs, act = self.n_step_buffer[0][:2]
+		rew, next_obs, done, info = self._get_n_step_info(self.n_step_buffers[agent_id], self.gamma)
+		obs, act = self.n_step_buffers[agent_id][0][:2]
 
 		self.obs_buf[self.ptr] = obs
 		self.next_obs_buf[self.ptr] = next_obs
@@ -54,7 +58,7 @@ class ReplayBuffer:
 		self.ptr = (self.ptr + 1) % self.max_size
 		self.size = min(self.size + 1, self.max_size)
 
-		return self.n_step_buffer[0]
+		return self.n_step_buffers[agent_id][0]
 
 	def sample_batch(self) -> Dict[str, np.ndarray]:
 		idxs = np.random.choice(self.size, size=self.batch_size, replace=False)
@@ -102,8 +106,7 @@ class ReplayBuffer:
 class ReplayBufferNrewards:
 	"""A simple numpy replay buffer."""
 
-	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True,  batch_size: int = 32, n_step: int = 1, gamma: float = 0.99, Nrewards: int = 2):
-
+	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True,  batch_size: int = 32, n_step: int = 1, gamma: float = 0.99, Nrewards: int = 2, n_agents: int = 1):
 		if save_state_in_uint8:
 			self.obs_buf = np.zeros([size] + list(obs_dim), dtype=np.uint8)
 			self.next_obs_buf = np.zeros([size] + list(obs_dim), dtype=np.uint8)
@@ -118,26 +121,27 @@ class ReplayBufferNrewards:
 		self.ptr, self.size, = 0, 0
 
 		# for N-step Learning
-		self.n_step_buffer = deque(maxlen=n_step)
+		self.n_agents = n_agents
+		self.n_step_buffers = [deque(maxlen=n_step) for _ in range(n_agents)]
 		self.n_step = n_step
 		self.gamma = gamma
 
-	def store(self, obs: np.ndarray, act: np.ndarray, rew: Union[float, list, tuple, np.ndarray], next_obs: np.ndarray, done: bool, info: dict) -> Tuple[
-		np.ndarray, np.ndarray, float, np.ndarray, bool, dict]:
-
-		if type(rew) is not float:
-			rew = np.array(rew, dtype=np.float32)
+	def store(self, agent_id: int, obs: np.ndarray, act: np.ndarray, rew: float, next_obs: np.ndarray, done: bool, info: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool, dict]:
+		
+		# Check if the agent ID is valid
+		assert 0 <= agent_id < self.n_agents, "Invalid agent ID"
 
 		transition = (obs, act, rew, next_obs, done, info)
-		self.n_step_buffer.append(transition)
+		
+		self.n_step_buffers[agent_id].append(transition)
 
 		# single step transition is not ready
-		if len(self.n_step_buffer) < self.n_step:
+		if len(self.n_step_buffers[agent_id]) < self.n_step:
 			return ()
 
 		# make a n-step transition
-		rew, next_obs, done, info = self._get_n_step_info(self.n_step_buffer, self.gamma)
-		obs, act = self.n_step_buffer[0][:2]
+		rew, next_obs, done, info = self._get_n_step_info(self.n_step_buffers[agent_id], self.gamma)
+		obs, act = self.n_step_buffers[agent_id][0][:2]
 
 		self.obs_buf[self.ptr] = obs
 		self.next_obs_buf[self.ptr] = next_obs
@@ -148,7 +152,7 @@ class ReplayBufferNrewards:
 		self.ptr = (self.ptr + 1) % self.max_size
 		self.size = min(self.size + 1, self.max_size)
 
-		return self.n_step_buffer[0]
+		return self.n_step_buffers[agent_id][0]
 
 	def sample_batch(self) -> Dict[str, np.ndarray]:
 		idxs = np.random.choice(self.size, size=self.batch_size, replace=False)
@@ -210,11 +214,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 	"""
 
-	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True, batch_size: int = 32, alpha: float = 0.6, n_step: int = 1, gamma: float = 0.99):
+	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True, batch_size: int = 32, alpha: float = 0.6, n_step: int = 1, gamma: float = 0.99, n_agents: int = 1):
 		"""Initialization."""
 		assert alpha >= 0
 
-		super(PrioritizedReplayBuffer, self).__init__(obs_dim, size, save_state_in_uint8, batch_size, n_step, gamma)
+		super().__init__(obs_dim, size, save_state_in_uint8, batch_size, n_step, gamma, n_agents)
 
 		self.max_priority, self.tree_ptr = 1.0, 0
 		self.alpha = alpha
@@ -229,6 +233,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 	def store(
 			self,
+			agent_id: int,
 			obs: np.ndarray,
 			act: int,
 			rew: float,
@@ -237,7 +242,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 			info: dict,
 	) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool, dict]:
 		"""Store experience and priority."""
-		transition = super().store(obs, act, rew, next_obs, done, info)
+		transition = super().store(agent_id, obs, act, rew, next_obs, done, info)
 
 		if transition:
 			self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
@@ -326,11 +331,11 @@ class PrioritizedReplayBufferNrewards(ReplayBufferNrewards):
 
 	"""
 
-	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True, batch_size: int = 32, alpha: float = 0.6, n_step: int = 1, gamma: float = 0.99):
+	def __init__(self, obs_dim: Union[tuple, int, list], size: int, save_state_in_uint8: bool = True, batch_size: int = 32, alpha: float = 0.6, n_step: int = 1, gamma: float = 0.99, Nrewards: int = 2, n_agents: int = 1):
 		"""Initialization."""
 		assert alpha >= 0
 
-		super().__init__(obs_dim, size, save_state_in_uint8, batch_size, n_step, gamma)
+		super().__init__(obs_dim=obs_dim, size=size, save_state_in_uint8=save_state_in_uint8, batch_size=batch_size, n_step=n_step, gamma=gamma, Nrewards=Nrewards, n_agents=n_agents)
 
 		self.max_priority, self.tree_ptr = 1.0, 0
 		self.alpha = alpha
@@ -345,6 +350,7 @@ class PrioritizedReplayBufferNrewards(ReplayBufferNrewards):
 
 	def store(
 			self,
+			agent_id: int,
 			obs: np.ndarray,
 			act: int,
 			rew: Union[float, list, tuple, np.ndarray],
@@ -353,7 +359,7 @@ class PrioritizedReplayBufferNrewards(ReplayBufferNrewards):
 			info: dict,
 	) -> Tuple[np.ndarray, np.ndarray, Union[float, list, tuple, np.ndarray], np.ndarray, bool, dict]:
 		"""Store experience and priority."""
-		transition = super().store(obs, act, rew, next_obs, done, info)
+		transition = super().store(agent_id, obs, act, rew, next_obs, done, info)
 
 		if transition:
 			self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
@@ -431,17 +437,22 @@ class PrioritizedReplayBufferNrewards(ReplayBufferNrewards):
 
 
 if __name__ == '__main__':
-	my_buffer = PrioritizedReplayBufferNrewards((10,5),100,n_step=5)
+	my_buffer = PrioritizedReplayBufferNrewards((10,5),100,n_step=5,n_agents=4, Nrewards = 2)
 	
+	steps = 0
 	for _ in range(60):
 		 # Genera un número aleatorio entre 0 y 1
-		numero_aleatorio = random.random()
+		numero_aleatorio = random.random() 
 		# Compara el número aleatorio con la probabilidad dada
 		if numero_aleatorio < 0.03:
 			done = True
 		else:
 			done = False
-		my_buffer.store(np.zeros((10,5)),random.randint(0,7),[random.randint(0,20),random.randint(0,20)],np.zeros((10,5)),done,{})
+		agent_id = _ % my_buffer.n_agents 
+		if agent_id == 0:
+			steps += 1
+
+		my_buffer.store(agent_id,np.zeros((10,5)),random.randint(0,7),np.asarray([random.randint(0,20),random.randint(0,20)]),np.zeros((10,5)),done,{'agent_id': agent_id, 'steps': steps})
 	print(my_buffer.sample_batch())
 	pass
 
