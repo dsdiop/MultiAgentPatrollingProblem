@@ -9,7 +9,7 @@ from Environment.Wrappers.time_stacking_wrapper import MultiAgentTimeStackingMem
 from scipy.spatial import distance_matrix
 import matplotlib
 import json
-
+from collections import deque
 background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","dodgerblue"])
 
 class DiscreteVehicle:
@@ -58,7 +58,8 @@ class DiscreteVehicle:
 		return collide
 
 	def check_collision(self, next_position):
-
+		if (next_position[0] < 0) or (next_position[0] >= self.navigation_map.shape[0]) or (next_position[1] < 0) or (next_position[1] >= self.navigation_map.shape[1]):
+			return True
 		if self.navigation_map[int(next_position[0]), int(next_position[1])] == 0:
 			return True  # There is a collision
 
@@ -103,6 +104,7 @@ class DiscreteVehicle:
 
 	def move_to_position(self, goal_position):
 		""" Move to the given position """
+		assert (goal_position[0] > 0) or (goal_position[0] < self.navigation_map.shape[0]) or (goal_position[1] > 0) or (goal_position[1] < self.navigation_map.shape[1]) , "Invalid position to move"
 
 		assert self.navigation_map[goal_position[0], goal_position[1]] == 1, "Invalid position to move"
 		self.distance += np.linalg.norm(goal_position - self.position)
@@ -274,7 +276,8 @@ class MultiAgentPatrolling(gym.Env):
 				 minimum_importance=0.1, # minimun importance to be considered, minimum 1/255 to avoid 0
 				 convert_to_uint8=True,
 				 frame_stacking = 0,
-				 state_index_stacking = (0,1,2,3,4)):
+				 state_index_stacking = (0,1,2,3,4),
+     			 trail_length = 10	):
 
 		""" The gym environment """
 
@@ -364,6 +367,9 @@ class MultiAgentPatrolling(gym.Env):
 
 		self.reward_normalization_value = self.fleet.vehicles[0].detection_mask
 
+		# Trail
+		self.trail_length = trail_length
+		self.last_positions = [deque(maxlen=self.trail_length) for _ in range(self.number_of_agents)]
 		# Metrics
 		self.steps = 0
 		self.instantaneous_node_idleness = None# Instantaneous node idleness
@@ -413,7 +419,8 @@ class MultiAgentPatrolling(gym.Env):
 			# Update the obstacle map for every agent #
 			for i in range(self.number_of_agents):
 				self.fleet.vehicles[i].navigation_map = self.scenario_map - self.inside_obstacles_map
-
+    
+		self.last_positions = [deque(maxlen=self.trail_length) for _ in range(self.number_of_agents)]
 		# Update the state of the agents #
 		self.update_state()
 		# Metrics
@@ -494,7 +501,14 @@ class MultiAgentPatrolling(gym.Env):
 			for i in range(self.number_of_agents):
        
 				agent_observation_of_position = self.fleet.vehicles[i].detection_mask.copy()
-				agent_observation_of_fleet = self.fleet.redundancy_mask.copy() - agent_observation_of_position
+    
+				self.last_positions[i].append(agent_observation_of_position.copy())
+				trail_length = len(self.last_positions[i])
+				trail_values = np.linspace(1,0,trail_length, endpoint=False)
+				for j, pos in enumerate(self.last_positions[i]):
+					agent_observation_of_position[pos.astype(bool)] = np.flip(trail_values)[j]	
+     
+				agent_observation_of_fleet = self.fleet.redundancy_mask.copy() - self.fleet.vehicles[i].detection_mask.copy()
 				state[i] = np.concatenate((
 					#obstacle_map[np.newaxis],
 					self.idleness_matrix[np.newaxis],
@@ -784,7 +798,8 @@ class MultiAgentPatrolling(gym.Env):
 			'reward_type': self.reward_type,
 			'ground_truth': self.ground_truth_type,
 			'frame_stacking': self.num_of_frame_stacking,
-			'state_index_stacking': self.state_index_stacking
+			'state_index_stacking': self.state_index_stacking,
+			'trail_length': self.trail_length
 
 		}
 
@@ -802,8 +817,10 @@ if __name__ == '__main__':
 	N = 4
 	initial_positions = np.array([[12, 7], [14, 5], [16, 3], [18, 1]])[:N, :]
 	visitable = np.column_stack(np.where(sc_map == 1))
-	#initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
+	initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 	gts0 = []
+	#initial_positions = np.asarray([[24, 21],[28,24],[27,19],[24,24]])
+
 	from tqdm import trange
 	for _ in range(3):
 		env = MultiAgentPatrolling(scenario_map=sc_map,
@@ -822,8 +839,9 @@ if __name__ == '__main__':
 								frame_stacking=2,
 								state_index_stacking=(2,3,4),
 								reward_type='Double reward v2 v4',
-								convert_to_uint8=True
-								)
+								convert_to_uint8=True,
+								trail_length = 20
+												)
 		reads = [2,4,9]
 		#lengths = [20,100,33]
 		gts = []
@@ -836,7 +854,7 @@ if __name__ == '__main__':
 			action = {i: np.random.randint(0,8) for i in range(N)}
 
 			while not all(done.values()):
-
+				#action = {i: np.random.randint(0,8) for i in range(N)}
 				for idx, agent in enumerate(env.fleet.vehicles):
 				
 					agent_mask = np.array([agent.check_action(a) for a in range(8)], dtype=int)
