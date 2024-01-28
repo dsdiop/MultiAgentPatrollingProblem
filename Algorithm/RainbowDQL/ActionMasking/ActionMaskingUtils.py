@@ -30,7 +30,7 @@ class SafeActionMasking:
 
 		movements = np.asarray([np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int) for angle in self.angle_set])
 		next_positions = self.position + movements
-		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.fleet_map.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.fleet_map.shape[1])
+		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.navigation_map.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.navigation_map.shape[1])
 					for new_position in next_positions]
 
 		action_mask = np.array([self.navigation_map[int(next_position[0]), int(next_position[1])] == 0 
