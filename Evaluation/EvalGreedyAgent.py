@@ -47,7 +47,7 @@ env = MultiAgentPatrolling(scenario_map=sc_map,
                         obstacles=False,
                         frame_stacking=1,
                         state_index_stacking=(2, 3, 4),
-                        reward_weights=(1.0, 0.1)
+                        #reward_weights=(1.0, 0.1)
                         )
 
 run_evaluation(path=f'./Results_seed_{seed}_Heuristics/', 

@@ -21,6 +21,7 @@ from Evaluation.OtherAlgorithms.NRRA import WanderingAgent
 from Evaluation.OtherAlgorithms.LawnMower import LawnMowerAgent
 from Evaluation.OtherAlgorithms.GreedyAgent import GreedyAgent
 
+from Environment.GroundTruthsModels.AlgaeBloomGroundTruth import algae_colormap,background_colormap
 def find_peaks(data:np.ndarray, neighborhood_size: int = 5, threshold: float = 0.1) -> np.ndarray:
 	""" Find the peaks in a 2D image using the local maximum filter. """
 
@@ -246,7 +247,7 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 		instantaneous_global_idleness = env.instantaneous_global_idleness
 		instantaneous_global_idleness_exp = env.instantaneous_global_idleness_exp
 		distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
-		nu = anneal_nu(p= distance / distance_budget)
+		nu = anneal_nu(distance / distance_budget, *nu_intervals)
   
 		metrics_list = [algorithm, total_reward_information,
                         total_reward_exploration,
@@ -261,7 +262,9 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 		for veh_id, veh in enumerate(env.fleet.vehicles):
 			paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
 
-
+		fig_vis = []
+		dd = True
+		imm = []
 		while not all(done.values()):
 
 			total_length += 1
@@ -303,7 +306,44 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 
 			# Process the agent step #
 			st, reward, done, _ = env.step(actions)
-                
+			if nu == 1 and dd :
+				
+				#print('exp: ', percentage_visited_exp)
+				fig1,ax = plt.subplots()
+				model = env.scenario_map*np.nan
+				model[np.where(env.scenario_map)] = env.model[np.where(env.scenario_map)]
+				pos1 = ax.imshow(model,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
+				fig1.colorbar(pos1, ax=ax, orientation='vertical')
+				fig_vis.append([total_length,nu,model])   
+				plt.title('Contamination Model')
+				plt.close()
+				#plt.savefig(f'C:\\Users\\dames\\OneDrive\\Documentos\\GitHub\\MultiAgentPatrollingProblem\\Results_seed30_firstpaper1/contamination_model.png')
+				#plt.show()
+				fig0,ax = plt.subplots()
+				pos0= ax.imshow(env.node_visit, cmap='rainbow')
+				fig0.colorbar(pos0, ax=ax, orientation='vertical')
+				#plt.show()
+				fig_vis.append([total_length,nu,env.node_visit])
+				#plt.savefig(f'C:\\Users\\dames\\OneDrive\\Documentos\\GitHub\\MultiAgentPatrollingProblem\\Results_seed30_firstpaper1/{policy_name}_node_visit_exp.png')
+				plt.close()
+			elif nu == 0 and dd:   
+				fig1,ax = plt.subplots()
+				model = env.scenario_map*np.nan
+				model[np.where(env.scenario_map)] = env.model[np.where(env.scenario_map)]
+				pos1 = ax.imshow(model,  cmap=algae_colormap, vmin=0.0, vmax=1.0)
+				fig1.colorbar(pos1, ax=ax, orientation='vertical')
+				fig_vis.append([total_length,nu,model])   
+				plt.title('Contamination Model')
+				plt.close()
+				fig3,ax = plt.subplots()
+				pos3= ax.imshow(env.node_visit, cmap='rainbow')
+				fig3.colorbar(pos3, ax=ax, orientation='vertical')
+				#plt.show()
+				fig_vis.append([total_length,nu,env.node_visit])
+				#plt.savefig(f'C:\\Users\\dames\\OneDrive\\Documentos\\GitHub\\MultiAgentPatrollingProblem\\Results_seed30_firstpaper1/{policy_name}_node_visit_exp.png')
+				plt.close() 
+			else:
+				env.node_visit=np.zeros_like(env.scenario_map)  
 			if render:
 				env.render()
 	
@@ -338,7 +378,7 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 				agents[i].reset(initial_directions[i])
 		
 
-
+	imm.append({algorithm:fig_vis})
 	if save:
 		if not os.path.exists(path):
 			os.makedirs(path)

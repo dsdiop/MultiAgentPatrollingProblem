@@ -560,6 +560,7 @@ class MultiAgentPatrolling(gym.Env):
 		inds = np.where(self.scenario_map)
 		instantaneous_node_idleness_exp[inds] = self.idleness_matrix[inds]
 		instantaneous_node_idleness[inds] = self.idleness_matrix[inds]*self.known_information[inds]
+		instantaneous_node_idleness[inds] = self.idleness_matrix[inds]*self.importance_matrix[inds]
   
 		self.instantaneous_node_idleness = instantaneous_node_idleness # Instantaneous node idleness
 		self.instantaneous_node_idleness_exp = instantaneous_node_idleness_exp # Instantaneous node idleness
@@ -796,9 +797,10 @@ if __name__ == '__main__':
 
 
 	sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
+	sc_map = np.genfromtxt('Environment/Maps/malaga_port.csv', delimiter=',')
 
 	N = 4
-	initial_positions = np.array([[30, 20], [32, 20], [34, 20], [30, 22]])[:N, :]
+	initial_positions = np.array([[12, 7], [14, 5], [16, 3], [18, 1]])[:N, :]
 	visitable = np.column_stack(np.where(sc_map == 1))
 	#initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]
 	gts0 = []

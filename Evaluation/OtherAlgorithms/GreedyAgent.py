@@ -97,7 +97,8 @@ class GreedyAgent:
 		agent_collisions = [list(elemento) in other_positions for elemento in new_possible_positions]
 		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.world.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.world.shape[1])
                       		for new_position in new_possible_positions]
-		border_collisions = [self.world[new_position[0], new_position[1]] == 0 for new_position in new_possible_positions]
+		border_collisions = [self.world[new_position[0], new_position[1]] == 0  if not world_collisions[i] else True 
+                       		for i,new_position in enumerate(new_possible_positions)]
 		OBS = np.logical_or(agent_collisions, np.logical_or(world_collisions,border_collisions))	
 		return OBS
 
@@ -174,16 +175,21 @@ def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, gro
 		metrics.register_step(run_num=run, step=total_length, metrics=metrics_list)
 		for veh_id, veh in enumerate(env.fleet.vehicles):
 			paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
-
+		imm = []
 		while not all(done.values()):
-
+			st = {i:None for i in s.keys()}
+			if env.convert_to_uint8:
+				for agent_id in s.keys():
+					st[agent_id] = (s[agent_id] / 255.0).astype(np.float32)
+			else:
+				st = s
 			total_length += 1
 			other_positions = []
 			acts = []
-			idleness_matrix =  s[np.argmax(env.active_agents)][1]
-			interest_map = env.importance_matrix
+			idleness_matrix =  st[np.argmax(env.active_agents)][0]
+			interest_map =st[np.argmax(env.active_agents)][1]
 			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
-			nu = anneal_nu(p= distance / distance_budget)
+			nu = anneal_nu(p= distance / distance_budget, p1=[0., 1], p2=[0.5, 1.], p3=[0.5, 1.], p4=[1., 1.])
 			print(f'nu: {nu}')
 			# Compute the actions #
 			for i in range(n_agents):
@@ -220,7 +226,8 @@ def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, gro
 			total_collisions += env.fleet.fleet_collisions    
 			total_reward = total_reward_exploration + total_reward_information
 
-
+			instantaneous_global_idleness = env.instantaneous_global_idleness
+			imm.append(instantaneous_global_idleness)
 			sum_global_interest = env.sum_global_idleness
 			metrics_list = [algorithm, total_reward_information,
 							total_reward_exploration,
@@ -237,7 +244,9 @@ def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, gro
 
 		
 
-
+	plt.figure()
+	plt.plot(imm)
+	plt.show()
 	if not render:
 		metrics.register_experiment()
 		paths.register_experiment()

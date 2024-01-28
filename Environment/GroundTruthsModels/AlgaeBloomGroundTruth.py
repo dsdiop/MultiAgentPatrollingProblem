@@ -2,7 +2,10 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, convolve
 import matplotlib.colors
 import matplotlib.pyplot as plt
-
+import sys
+import os
+data_path = os.path.join(os.path.dirname(__file__), '..')
+sys.path.append(data_path)
 algae_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue","darkcyan", "darkgreen", "forestgreen"])
 background_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["sienna","sienna"])
 fuelspill_colormap = matplotlib.colors.LinearSegmentedColormap.from_list("", ["dodgerblue", "olive", "saddlebrown", "indigo"])
@@ -132,7 +135,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    gt = algae_bloom(np.genfromtxt('../Maps/example_map.csv', delimiter=','), dt=0.2)
+    gt = algae_bloom(np.genfromtxt(f'{data_path}/Maps/malaga_port.csv', delimiter=','), dt=0.1, seed=5)
 
     m = gt.reset()
     gt.render()

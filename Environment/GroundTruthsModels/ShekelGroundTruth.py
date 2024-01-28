@@ -3,8 +3,10 @@ import numpy as np
 from deap import benchmarks
 
 import sys
+import os
+data_path = os.path.join(os.path.dirname(__file__), '..')
+sys.path.append(data_path)
 
-sys.path.append('.')
 
 class GroundTruth(object):
 
@@ -125,12 +127,12 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
 
-    ypacarai_map = np.genfromtxt('Environment/Maps/ypacarai_map_low_res.csv',delimiter=',',dtype=float)
-    gt = GroundTruth(ypacarai_map, max_number_of_peaks=6, is_bounded=True, seed=10, peaks_location='MiddleRight')
+    ypacarai_map = np.genfromtxt(f'{data_path}/Maps/example_map.csv',delimiter=',',dtype=float)
+    gt = GroundTruth(ypacarai_map, max_number_of_peaks=6, is_bounded=True, seed=10, peaks_location='Random')
 
-    # for i in range(100):
-    #     gt.reset()
-    #     gt.render()
+    for i in range(100):
+         gt.reset()
+         gt.render()
 
     A_total = np.empty((0, 2), float)
 

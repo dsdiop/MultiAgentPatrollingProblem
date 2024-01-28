@@ -30,8 +30,11 @@ class SafeActionMasking:
 
 		movements = np.asarray([np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])).astype(int) for angle in self.angle_set])
 		next_positions = self.position + movements
+		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.fleet_map.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.fleet_map.shape[1])
+					for new_position in next_positions]
 
-		action_mask = np.array([self.navigation_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
+		action_mask = np.array([self.navigation_map[int(next_position[0]), int(next_position[1])] == 0 
+                          if not world_collisions[i] else True for i,next_position in enumerate(next_positions)]).astype(bool)
 
 		q_values[action_mask] = -np.inf
 
@@ -100,7 +103,10 @@ class ConsensusSafeActionMasking:
 				movements = np.asarray([np.round(np.array([self.movement_length * np.cos(angle), self.movement_length * np.sin(angle)])) for angle in self.angle_set]).astype(int)
 				#movements = np.asarray([np.round(np.array([np.cos(angle), np.sin(angle)])) * self.movement_length for angle in self.angle_set]).astype(int)
 				next_positions = agent_position + movements
-				action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0 for next_position in next_positions]).astype(bool)
+				world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.fleet_map.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.fleet_map.shape[1])
+                      		for new_position in next_positions]
+				action_mask = np.array([self.fleet_map[int(next_position[0]), int(next_position[1])] == 0  if not world_collisions[i] else True 
+                            for i,next_position in enumerate(next_positions)]).astype(bool)
 				# Censor the impossible actions in the Q-values
 				q_values_copy[agent][action_mask] = -np.inf
 				# If all the actions of the are impossible, the agent should make the first move
