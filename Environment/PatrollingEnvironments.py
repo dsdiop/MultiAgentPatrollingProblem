@@ -63,7 +63,25 @@ class DiscreteVehicle:
 		if self.navigation_map[int(next_position[0]), int(next_position[1])] == 0:
 			return True  # There is a collision
 
-		return False
+		return not self.is_reachable(next_position)
+
+	def is_reachable(self, next_position):
+		""" Check if the next position is reachable """
+		x, y = next_position
+		dx = x - self.position[0]
+		dy = y - self.position[1]
+		steps = max(abs(dx), abs(dy))
+		dx = dx / steps if steps != 0 else 0
+		dy = dy / steps if steps != 0 else 0
+		reachable_positions = True
+		for step in range(1, steps + 1):
+			px = int(self.position[0] + dx * step)
+			py = int(self.position[1] + dy * step)
+			if self.navigation_map[px, py] != 1:
+				reachable_positions = False
+				break
+
+		return reachable_positions
 
 	def compute_detection_mask(self):
 		""" Compute the circular mask """
@@ -814,7 +832,7 @@ if __name__ == '__main__':
 	sc_map = np.genfromtxt('Environment/Maps/example_map.csv', delimiter=',')
 	sc_map = np.genfromtxt('Environment/Maps/malaga_port.csv', delimiter=',')
 
-	N = 4
+	N = 1
 	initial_positions = np.array([[12, 7], [14, 5], [16, 3], [18, 1]])[:N, :]
 	visitable = np.column_stack(np.where(sc_map == 1))
 	initial_positions = visitable[np.random.randint(0,len(visitable), size=N), :]

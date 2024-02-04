@@ -36,10 +36,15 @@ class algae_bloom:
         self.contour_currents_y = convolve(self.grid, np.array([[0,0,0],[0,1,0],[0,-1,0]]), mode='constant')*2
     def reset(self):
 
-        starting_point = np.array((self.rng.integers(self.map.shape[0]/4, 3*self.map.shape[0]/4), self.rng.integers(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
+        """starting_point = np.array((self.rng.integers(self.map.shape[0]/4, 3*self.map.shape[0]/4), self.rng.integers(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
         self.particles = self.rng.multivariate_normal(starting_point, np.array([[7.0, 0.0],[0.0, 7.0]]),size=(100,))
         
         starting_point = np.array((self.rng.integers(self.map.shape[0]/4, 3*self.map.shape[0]/4), self.rng.integers(self.map.shape[1]/2, 2* self.map.shape[1]/3)))
+        self.particles = np.vstack(( self.particles, self.rng.multivariate_normal(starting_point, np.array([[3.0, 0.0],[0.0, 3.0]]),size=(100,))))"""
+        starting_point = np.array((self.rng.integers(self.map.shape[0]/6, 5*self.map.shape[0]/6), self.rng.integers(self.map.shape[1]/6, 5* self.map.shape[1]/6)))
+        self.particles = self.rng.multivariate_normal(starting_point, np.array([[7.0, 0.0],[0.0, 7.0]]),size=(100,))
+        
+        starting_point = np.array((self.rng.integers(self.map.shape[0]/6, 5*self.map.shape[0]/6), self.rng.integers(self.map.shape[1]/6, 5* self.map.shape[1]/6)))
         self.particles = np.vstack(( self.particles, self.rng.multivariate_normal(starting_point, np.array([[3.0, 0.0],[0.0, 3.0]]),size=(100,))))
 
         self.in_bound_particles = np.array([particle for particle in self.particles if self.is_inside(particle)])
@@ -93,15 +98,17 @@ class algae_bloom:
 
         self.map[:,:] = 0.0
         
-        current_movement = self.current_field_fn(self.in_bound_particles)
+        if self.in_bound_particles.size != 0:
+            current_movement = self.current_field_fn(self.in_bound_particles)
 
-        self.in_bound_particles = self.apply_bounds_fn(self.in_bound_particles)
-        self.in_bound_particles = self.in_bound_particles + self.dt * current_movement
-        
-        self.in_bound_particles = np.array([particle for particle in self.in_bound_particles if self.is_inside(particle)])
-
-        self.map[self.in_bound_particles[:,0].astype(int), self.in_bound_particles[:, 1].astype(int)] = 1.0
-
+            self.in_bound_particles = self.apply_bounds_fn(self.in_bound_particles)
+            self.in_bound_particles = self.in_bound_particles + self.dt * current_movement
+            self.in_bound_particles = np.array([particle for particle in self.in_bound_particles if self.is_inside(particle)])
+            
+            if self.in_bound_particles.size != 0:
+                self.map[self.in_bound_particles[:,0].astype(int), self.in_bound_particles[:, 1].astype(int)] = 1.0
+            if self.in_bound_particles.size == 0:
+                pass
         self.algae_map = gaussian_filter(self.map, 0.8) * self.grid
 
         return self.algae_map
@@ -135,7 +142,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    gt = algae_bloom(np.genfromtxt(f'{data_path}/Maps/malaga_port.csv', delimiter=','), dt=0.1, seed=5)
+    gt = algae_bloom(np.genfromtxt(f'{data_path}/Maps/malaga_port.csv', delimiter=','), dt=0.2, seed=0)
 
     m = gt.reset()
     gt.render()

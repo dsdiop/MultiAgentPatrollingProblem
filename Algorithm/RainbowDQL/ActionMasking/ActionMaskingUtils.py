@@ -33,12 +33,32 @@ class SafeActionMasking:
 		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.navigation_map.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.navigation_map.shape[1])
 					for new_position in next_positions]
 
-		action_mask = np.array([self.navigation_map[int(next_position[0]), int(next_position[1])] == 0 
+		action_mask = np.array([self.isnot_reachable(next_position) 
                           if not world_collisions[i] else True for i,next_position in enumerate(next_positions)]).astype(bool)
 
 		q_values[action_mask] = -np.inf
 
 		return q_values, np.argmax(q_values)
+
+	def isnot_reachable(self, next_position):
+		""" Check if the next position is reachable or navigable """
+		if self.navigation_map[int(next_position[0]), int(next_position[1])] == 0:
+			return True 
+		x, y = next_position
+		dx = x - self.position[0]
+		dy = y - self.position[1]
+		steps = max(abs(dx), abs(dy))
+		dx = dx / steps if steps != 0 else 0
+		dy = dy / steps if steps != 0 else 0
+		reachable_positions = True
+		for step in range(1, steps + 1):
+			px = int(self.position[0] + dx * step)
+			py = int(self.position[1] + dy * step)
+			if self.navigation_map[px, py] != 1:
+				reachable_positions = False
+				break
+
+		return not reachable_positions
 
 class NoGoBackMasking:
 

@@ -263,9 +263,9 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 			paths.register_step(run_num=run, step=total_length, metrics=[veh_id, veh.position[0], veh.position[1]])
 
 		fig_vis = []
-		dd = True
+		dd = False
 		imm = []
-		while not all(done.values()):
+		while not any(done.values()):
 
 			total_length += 1
 			other_positions = []
@@ -279,7 +279,8 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 				s = st
     
 			idleness_matrix =  s[np.argmax(env.active_agents)][0]
-			interest_map = env.importance_matrix
+			#interest_map = env.importance_matrix
+			interest_map =s[np.argmax(env.active_agents)][1]
 			distance = np.min([np.max(env.fleet.get_distances()), distance_budget])
 			nu = anneal_nu(p= distance / distance_budget)
 			# Compute the actions #
@@ -304,6 +305,8 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 			actions = {i: acts[i] for i in range(n_agents)}
 			#actions = {i: random_wandering_agents[i].move(env.fleet.vehicles[i].position) for i in range(n_agents)}
 
+			if render:
+				print(nu)
 			# Process the agent step #
 			st, reward, done, _ = env.step(actions)
 			if nu == 1 and dd :
@@ -342,7 +345,7 @@ def run_path_planners_evaluation(path: str, env, algorithm: str, runs: int, n_ag
 				fig_vis.append([total_length,nu,env.node_visit])
 				#plt.savefig(f'C:\\Users\\dames\\OneDrive\\Documentos\\GitHub\\MultiAgentPatrollingProblem\\Results_seed30_firstpaper1/{policy_name}_node_visit_exp.png')
 				plt.close() 
-			else:
+			elif dd:
 				env.node_visit=np.zeros_like(env.scenario_map)  
 			if render:
 				env.render()
