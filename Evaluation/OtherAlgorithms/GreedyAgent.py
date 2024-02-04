@@ -18,13 +18,13 @@ class GreedyAgent:
 		self.seed = seed
 		self.rng = np.random.default_rng(seed=self.seed)
 	
-	def move(self, actual_position, other_positions, idleness_matrix, interest_map):
+	def move(self, current_position, other_positions, idleness_matrix, interest_map):
 
 		# Compute if there is an obstacle or reached the border #
-		new_possible_positions = [actual_position + self.action_to_vector(i) for i in range(self.number_of_actions)]
-		OBS = self.check_possible_collisions(new_possible_positions, other_positions)
+		new_possible_positions = [current_position + self.action_to_vector(i) for i in range(self.number_of_actions)]
+		OBS = self.check_possible_collisions(current_position, new_possible_positions, other_positions)
 		if OBS.all():
-			return 0, actual_position, idleness_matrix
+			return 0, current_position, idleness_matrix
 
 		rewards_exploration = []
 		rewards_information = []
@@ -83,6 +83,10 @@ class GreedyAgent:
 
 		known_mask = np.zeros_like(self.world)
 		known_mask[mask.T] = 1.0
+		known_mask = known_mask*self.world
+		for px, py in np.argwhere(known_mask == 1):
+			if self.isnot_reachable(agent_position, [px, py]):
+				known_mask[px, py] = 0
 		return known_mask*self.world
 
 	def action_to_vector(self, action):
@@ -92,16 +96,34 @@ class GreedyAgent:
 		movement = np.round(np.array([self.move_length * np.cos(angle), self.move_length * np.sin(angle)])).astype(int)
 		return movement.astype(int)
 
-	def check_possible_collisions(self, new_possible_positions, other_positions):
+	def check_possible_collisions(self, current_position, new_possible_positions, other_positions):
 		""" Check if the agent collides with an obstacle """
 		agent_collisions = [list(elemento) in other_positions for elemento in new_possible_positions]
 		world_collisions = [(new_position[0] < 0) or (new_position[0] >= self.world.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.world.shape[1])
                       		for new_position in new_possible_positions]
-		border_collisions = [self.world[new_position[0], new_position[1]] == 0  if not world_collisions[i] else True 
+		border_collisions = [self.isnot_reachable(current_position, new_position)  if not world_collisions[i] else True 
                        		for i,new_position in enumerate(new_possible_positions)]
 		OBS = np.logical_or(agent_collisions, np.logical_or(world_collisions,border_collisions))	
 		return OBS
+	def isnot_reachable(self, current_position, next_position):
+		""" Check if the next position is reachable or navigable """
+		if self.world[int(next_position[0]), int(next_position[1])] == 0:
+			return True 
+		x, y = next_position
+		dx = x - current_position[0]
+		dy = y - current_position[1]
+		steps = max(abs(dx), abs(dy))
+		dx = dx / steps if steps != 0 else 0
+		dy = dy / steps if steps != 0 else 0
+		reachable_positions = True
+		for step in range(1, steps + 1):
+			px = round(current_position[0] + dx * step)
+			py = round(current_position[1] + dy * step)
+			if self.world[px, py] != 1:
+				reachable_positions = False
+				break
 
+		return not reachable_positions
 
 def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, render = False):
 

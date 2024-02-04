@@ -20,24 +20,24 @@ class WanderingAgent:
 		self.seed = seed
 		self.rng = np.random.default_rng(seed=self.seed)
 	
-	def move(self, actual_position, other_positions):
+	def move(self, current_position, other_positions):
 
 		if self.action is None:
-			self.action = self.select_action_without_collision(actual_position, other_positions)
+			self.action = self.select_action_without_collision(current_position, other_positions)
 		
 		# Compute if there is an obstacle or reached the border #
-		OBS = self.check_collision(self.action, actual_position, other_positions)
+		OBS = self.check_collision(self.action, current_position, other_positions)
 
 		if OBS:
-			self.action = self.select_action_without_collision(actual_position, other_positions)
+			self.action = self.select_action_without_collision(current_position, other_positions)
 
 		if self.consecutive_movements is not None:
 			if self.t == self.consecutive_movements:
-				self.action = self.select_action_without_collision(actual_position, other_positions)
+				self.action = self.select_action_without_collision(current_position, other_positions)
 				self.t = 0
 
 		self.t += 1
-		return self.action , actual_position + self.action_to_vector(self.action)
+		return self.action , current_position + self.action_to_vector(self.action)
 	
 	
 	def action_to_vector(self, action):
@@ -51,21 +51,21 @@ class WanderingAgent:
 		""" Compute the opposite action """
 		return (action + self.number_of_actions//2) % self.number_of_actions
 	
-	def check_collision(self, action, actual_position, other_positions):
+	def check_collision(self, action, current_position, other_positions):
 		""" Check if the agent collides with an obstacle """
-		new_position = actual_position + self.action_to_vector(action)
+		new_position = current_position + self.action_to_vector(action)
 		new_position = np.ceil(new_position).astype(int)
 		
 		OBS = (new_position[0] < 0) or (new_position[0] >= self.world.shape[0]) or (new_position[1] < 0) or (new_position[1] >= self.world.shape[1])
 		if not OBS:
-			OBS = self.world[new_position[0], new_position[1]] == 0 #or (list(new_position) in other_positions)
+			OBS = self.isnot_reachable(current_position, new_position) #or (list(new_position) in other_positions)
 		if (list(new_position) in other_positions):
 			OBS = True
 		return OBS
 
-	def select_action_without_collision(self, actual_position, other_positions):
+	def select_action_without_collision(self, current_position, other_positions):
 		""" Select an action without collision """
-		action_caused_collision = [self.check_collision(action, actual_position, other_positions) for action in range(self.number_of_actions)]
+		action_caused_collision = [self.check_collision(action, current_position, other_positions) for action in range(self.number_of_actions)]
 
 		# Select a random action without collision and that is not the oppositve previous action #
 		if self.action is not None:
@@ -75,7 +75,25 @@ class WanderingAgent:
 
 		return action
 	
+	def isnot_reachable(self, current_position, next_position):
+		""" Check if the next position is reachable or navigable """
+		if self.world[int(next_position[0]), int(next_position[1])] == 0:
+			return True 
+		x, y = next_position
+		dx = x - current_position[0]
+		dy = y - current_position[1]
+		steps = max(abs(dx), abs(dy))
+		dx = dx / steps if steps != 0 else 0
+		dy = dy / steps if steps != 0 else 0
+		reachable_positions = True
+		for step in range(1, steps + 1):
+			px = round(current_position[0] + dx * step)
+			py = round(current_position[1] + dy * step)
+			if self.world[px, py] != 1:
+				reachable_positions = False
+				break
 
+		return not reachable_positions
 
 def run_evaluation(path: str, env, algorithm: str, runs: int, n_agents: int, ground_truth_type: str, render = False):
 

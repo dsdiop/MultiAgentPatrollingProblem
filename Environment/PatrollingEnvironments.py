@@ -75,8 +75,8 @@ class DiscreteVehicle:
 		dy = dy / steps if steps != 0 else 0
 		reachable_positions = True
 		for step in range(1, steps + 1):
-			px = int(self.position[0] + dx * step)
-			py = int(self.position[1] + dy * step)
+			px = round(self.position[0] + dx * step)
+			py = round(self.position[1] + dy * step)
 			if self.navigation_map[px, py] != 1:
 				reachable_positions = False
 				break
@@ -98,7 +98,10 @@ class DiscreteVehicle:
 		mask = (x[np.newaxis, :] - px) ** 2 + (y[:, np.newaxis] - py) ** 2 <= self.detection_length ** 2
 
 		known_mask[mask.T] = 1.0
-
+		known_mask = known_mask * self.navigation_map
+		for px, py in np.argwhere(known_mask == 1):
+			if not self.is_reachable([px, py]):
+				known_mask[px, py] = 0
 		return known_mask*self.navigation_map
 
 	def reset(self, initial_position):

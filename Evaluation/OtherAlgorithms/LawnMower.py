@@ -23,24 +23,45 @@ class LawnMowerAgent:
 			self.initial_action = self.rng.integers(0, self.number_of_actions)
 
 	
-	def compute_obstacles(self, position, other_positions):
+	def compute_obstacles(self, current_position, position, other_positions):
 		# Compute if there is an obstacle or reached the border #
 		OBS = position[0] < 0 or position[0] >= self.world.shape[0] or position[1] < 0 or position[1] >= self.world.shape[1]
 		
 		if not OBS:
-			OBS = OBS or self.world[position[0], position[1]] == 0 # or (list(position) in other_positions)
+			OBS = OBS or self.isnot_reachable(current_position, position)# or (list(position) in other_positions)
 		if list(position) in other_positions:
 			OBS = True
 		return OBS
 
+	def isnot_reachable(self, current_position, next_position):
+		""" Check if the next position is reachable or navigable """
+		if self.world[int(next_position[0]), int(next_position[1])] == 0:
+			return True 
+		x, y = next_position
+		dx = x - current_position[0]
+		dy = y - current_position[1]
+		steps = max(abs(dx), abs(dy))
+		dx = dx / steps if steps != 0 else 0
+		dy = dy / steps if steps != 0 else 0
+		reachable_positions = True
+		for step in range(1, steps + 1):
+			px = round(current_position[0] + dx * step)
+			py = round(current_position[1] + dy * step)
+			if self.world[px, py] != 1:
+				reachable_positions = False
+				break
 
-	def move(self, actual_position,others_positions):
+		return not reachable_positions
+
+
+
+	def move(self, current_position,others_positions):
 		""" Compute the new state """
 
 		# Compute the new position #
-		new_position = actual_position + self.action_to_vector(self.state_to_action(self.state)) 
+		new_position = current_position + self.action_to_vector(self.state_to_action(self.state)) 
 		# Compute if there is an obstacle or reached the border #
-		OBS = self.compute_obstacles(new_position,others_positions)
+		OBS = self.compute_obstacles(current_position, new_position,others_positions)
 
 		if self.state == 'FORWARD':
 			
@@ -49,8 +70,8 @@ class LawnMowerAgent:
 			else:
 
 				# Check if with the new direction there is an obstacle #
-				new_position = actual_position + self.action_to_vector(self.state_to_action('TURN')) 
-				OBS = self.compute_obstacles(new_position,others_positions)
+				new_position = current_position + self.action_to_vector(self.state_to_action('TURN')) 
+				OBS = self.compute_obstacles(current_position, new_position,others_positions)
 
 				if not OBS:
 					self.state = 'TURN'
@@ -61,8 +82,8 @@ class LawnMowerAgent:
 			# Stay in receed state until there is no obstacle #
 
 			# Check if with the new direction there is an obstacle #
-			new_position = actual_position + self.action_to_vector(self.state_to_action('TURN')) 
-			OBS = self.compute_obstacles(new_position,others_positions)
+			new_position = current_position + self.action_to_vector(self.state_to_action('TURN')) 
+			OBS = self.compute_obstacles(current_position, new_position,others_positions)
 			if OBS:
 				self.state = 'RECEED'
 			else:
@@ -84,8 +105,8 @@ class LawnMowerAgent:
 			else:
 
 				# Check if with the new direction there is an obstacle #
-				new_position = actual_position + self.action_to_vector(self.state_to_action('TURN2'))
-				OBS = self.compute_obstacles(new_position,others_positions)
+				new_position = current_position + self.action_to_vector(self.state_to_action('TURN2'))
+				OBS = self.compute_obstacles(current_position, new_position,others_positions)
 
 				if not OBS:
 					self.state = 'TURN2'
@@ -94,8 +115,8 @@ class LawnMowerAgent:
 
 		elif self.state == 'RECEED2':
 			# Stay in receed state until there is no obstacle #
-			new_position = actual_position + self.action_to_vector(self.state_to_action('TURN2')) 
-			OBS = self.compute_obstacles(new_position,others_positions)
+			new_position = current_position + self.action_to_vector(self.state_to_action('TURN2')) 
+			OBS = self.compute_obstacles(current_position, new_position,others_positions)
 			if OBS:
 				self.state = 'RECEED2'
 			else:
@@ -111,9 +132,9 @@ class LawnMowerAgent:
 					self.turn_count += 1
 
 		# Compute the new position #
-		new_position = actual_position + self.action_to_vector(self.state_to_action(self.state)) 
+		new_position = current_position + self.action_to_vector(self.state_to_action(self.state)) 
 		# Compute if there is an obstacle or reached the border #
-		OBS = self.compute_obstacles(new_position,others_positions)
+		OBS = self.compute_obstacles(current_position, new_position,others_positions)
 		ina = self.initial_action
 		while OBS:
 			self.initial_action = self.perpendicular_action(self.initial_action)
@@ -121,11 +142,11 @@ class LawnMowerAgent:
 				break
 			self.state = 'FORWARD'
 			# Compute the new position #
-			new_position = actual_position + self.action_to_vector(self.state_to_action(self.state)) 
+			new_position = current_position + self.action_to_vector(self.state_to_action(self.state)) 
 			# Compute if there is an obstacle or reached the border #
-			OBS = self.compute_obstacles(new_position,others_positions)
+			OBS = self.compute_obstacles(current_position, new_position,others_positions)
    
-		new_position = actual_position + self.action_to_vector(self.state_to_action(self.state)) 
+		new_position = current_position + self.action_to_vector(self.state_to_action(self.state)) 
 		return self.state_to_action(self.state), new_position
 	
 	def state_to_action(self, state):

@@ -52,8 +52,8 @@ class SafeActionMasking:
 		dy = dy / steps if steps != 0 else 0
 		reachable_positions = True
 		for step in range(1, steps + 1):
-			px = int(self.position[0] + dx * step)
-			py = int(self.position[1] + dy * step)
+			px = round(self.position[0] + dx * step)
+			py = round(self.position[1] + dy * step)
 			if self.navigation_map[px, py] != 1:
 				reachable_positions = False
 				break
